@@ -272,7 +272,9 @@ export default function attr(type, options) {
 
   var meta = {
     type: type,
+    kind: 'attr',
     isAttribute: true,
+    key: null,
     options: options
   };
 
@@ -286,8 +288,8 @@ export default function attr(type, options) {
         // the 'didSetProperty' handler if it is no different from the original value
         this._attributes[key] = value;
 
-        this.send('didSetProperty', {
-          name: key,
+        this.send('propertyDidChange', {
+          meta: meta,
           oldValue: oldValue,
           originalValue: this._data[key],
           value: value

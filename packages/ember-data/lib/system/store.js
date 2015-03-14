@@ -1824,8 +1824,7 @@ function _findHasMany(adapter, store, record, link, relationship) {
 
     Ember.assert("The response from a findHasMany must be an Array, not " + Ember.inspect(payload), Ember.typeOf(payload) === 'array');
 
-    var records = store.pushMany(relationship.type, payload);
-    return records;
+    return store.pushMany(relationship.type, payload);
   }, null, "DS: Extract payload of " + record + " : hasMany " + relationship.type);
 }
 
@@ -1845,8 +1844,7 @@ function _findBelongsTo(adapter, store, record, link, relationship) {
       return null;
     }
 
-    var record = store.push(relationship.type, payload);
-    return record;
+    return store.push(relationship.type, payload);
   }, null, "DS: Extract payload of " + record + " : " + relationship.type);
 }
 

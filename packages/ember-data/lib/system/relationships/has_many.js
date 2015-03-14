@@ -96,10 +96,10 @@ function hasMany(type, options) {
   // the first time the CP is called.
   var meta = {
     type: type,
-    isRelationship: true,
-    options: options,
     kind: 'hasMany',
-    key: null
+    isRelationship: true,
+    key: null,
+    options: options
   };
 
   return Ember.computed(function(key) {
@@ -117,12 +117,26 @@ Model.reopen({
     //we fetch the newly added record in case it is unloaded
     //TODO(Igor): Consider whether we could do this only if the record state is unloaded
     this.notifyPropertyChange(key);
+    this.send('didSetProperty', {
+      meta: Ember.meta(this.constructor.proto()).descs[key]._meta,
+      //oldValue: this._relationships[key].inverseRecord,
+      originalValue: this._data[key],
+      value: record,
+      isAdding: true
+    });
   },
 
   notifyHasManyRemoved: function(key, record) {
     var relationship = this._relationships[key];
     var manyArray = relationship.manyArray;
     manyArray.removeRecord(record);
+    this.send('didSetProperty', {
+      meta: Ember.meta(this.constructor.proto()).descs[key]._meta,
+      //oldValue: this._relationships[key].inverseRecord,
+      originalValue: this._data[key],
+      value: record,
+      isAdding: false
+    });
   }
 });
 

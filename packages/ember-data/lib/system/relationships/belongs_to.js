@@ -60,10 +60,10 @@ function belongsTo(type, options) {
 
   var meta = {
     type: type,
-    isRelationship: true,
-    options: options,
     kind: 'belongsTo',
-    key: null
+    isRelationship: true,
+    key: null,
+    options: options
   };
 
   return Ember.computed(function(key, value) {
@@ -92,10 +92,20 @@ function belongsTo(type, options) {
 Model.reopen({
   notifyBelongsToAdded: function(key, relationship) {
     this.notifyPropertyChange(key);
+    this.send('didSetProperty', {
+      meta: Ember.meta(this.constructor.proto()).descs[key]._meta,
+      originalValue: this._data[key],
+      value: relationship.inverseRecord
+    });
   },
 
   notifyBelongsToRemoved: function(key) {
     this.notifyPropertyChange(key);
+    this.send('didSetProperty', {
+      meta: Ember.meta(this.constructor.proto()).descs[key]._meta,
+      originalValue: this._data[key],
+      value: null
+    });
   }
 });
 

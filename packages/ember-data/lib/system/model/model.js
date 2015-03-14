@@ -921,15 +921,36 @@ var Model = Ember.Object.extend(Ember.Evented, {
       set(this, 'isError', false);
     }
 
-    //Eventually rollback will always work for relationships
-    //For now we support it only out of deleted state, because we
-    //have an explicit way of knowing when the server acked the relationship change
     if (get(this, 'isDeleted')) {
       this.reconnectRelationships();
     }
 
     if (get(this, 'isNew')) {
       this.clearRelationships();
+    }
+
+    if (get(this, 'isDirty')) {
+      this.eachRelationship(function(key, meta) {
+        var relationship = this._relationships[key],
+            relationshipType = this.constructor.determineRelationshipType({ key: key, kind: meta.kind });
+
+        if ('belongsTo' === meta.kind) { // oneToNone, oneToOne and oneToMany
+          relationship.setRecord(this._data[key]);
+        } else if (relationshipType === 'manyToMany') {
+          var dataArray = this._data[key] || [],
+              manyArray = relationship.manyArray;
+
+          // Remove items in manyArray not in dataArray
+          relationship.removeRecords(manyArray.reject(function _inDataArray(item) {
+            return dataArray.indexOf(item) !== -1;
+          }));
+
+          // Add back items in dataArray not in manyArray
+          relationship.addRecords(dataArray.reject(function _inManyArray(item) {
+            return manyArray.contains(item);
+          }), get(manyArray, 'length'));
+        }
+      }, this);
     }
 
     if (!get(this, 'isValid')) {

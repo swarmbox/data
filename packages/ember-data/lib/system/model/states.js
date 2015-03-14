@@ -4,10 +4,13 @@
 
 var get = Ember.get;
 var set = Ember.set;
+var classify = Ember.String.classify;
+
 /*
   This file encapsulates the various states that a record can transition
   through during its lifecycle.
 */
+
 /**
   ### State
 
@@ -173,12 +176,65 @@ var set = Ember.set;
   @class RootState
 */
 
+var resetStrategyFor = {
+
+  attr: function _attrWasReset(record, context) {
+    var key = context.meta.key,
+        wasReset = context.originalValue === context.value;
+    if (wasReset) {
+      delete record._attributes[key];
+    }
+    return wasReset;
+  },
+
+  belongsTo: function _belongsToWasReset(record, context) {
+    return context.originalValue === context.value;
+  },
+
+  hasMany: function _hasManyWasReset(record, context) {
+    var relationshipType = record.constructor.determineRelationshipType({ key: context.meta.key, kind: 'hasMany' });
+    if (relationshipType === 'manyToMany') {
+      if (!context.originalValue) { return true; }
+      var isValueInOriginal = context.originalValue.indexOf(context.value) !== -1;
+      return context.isAdding ? isValueInOriginal : !isValueInOriginal;
+    }
+  }
+};
+
+var defaultDirtyStrategyFor = {
+
+  attr: function _defaultDirtyRecordForAttrChange(record, context) {
+    return true;
+  },
+
+  belongsTo: function _defaultDirtyRecordForBelongsToChange(record, context) {
+    return true;
+  },
+
+  hasMany: function _defaultDirtyRecordForHasManyChange(record, context) {
+    var relationshipType = record.constructor.determineRelationshipType({ key: context.meta.key, kind: 'hasMany' });
+    return relationshipType === 'manyToMany';
+  }
+};
+
 function didSetProperty(record, context) {
-  if (context.value === context.originalValue) {
-    delete record._attributes[context.name];
-    record.send('propertyWasReset', context.name);
-  } else if (context.value !== context.oldValue) {
-    record.send('becomeDirty');
+  var store = get(record, 'store'),
+      meta = context.meta,
+      func = resetStrategyFor[meta.kind],
+      propertyWasReset = func.call(null, record, context),
+      adapter, ret;
+
+  if (propertyWasReset) {
+    record.send('propertyWasReset', meta.key);
+  } else {
+    adapter = store.adapterFor(record.constructor);
+    func = adapter['dirtyRecordFor'+classify(meta.kind)+'Change'];
+    if ('function' === typeof func) {
+      ret = func.call(null, record, context);
+    } else {
+      ret = defaultDirtyStrategyFor[meta.kind].call(null, record, context);
+    }
+    if (ret) { record.send('becomeDirty'); }
   }
 
   record.updateRecordArraysLater();
@@ -228,6 +284,7 @@ function didSetProperty(record, context) {
 // `invalid`: the record has invalid information and cannot be
 //   send to the adapter yet.
 var DirtyState = {
+
   initialState: 'uncommitted',
 
   // FLAGS
@@ -239,7 +296,9 @@ var DirtyState = {
   // This means that there are local pending changes, but they
   // have not yet begun to be saved, and are not invalid.
   uncommitted: {
+
     // EVENTS
+
     didSetProperty: didSetProperty,
 
     //TODO(Igor) reloading now triggers a
@@ -247,10 +306,26 @@ var DirtyState = {
     loadingData: Ember.K,
 
     propertyWasReset: function(record, name) {
-      var length = Ember.keys(record._attributes);
-      var stillDirty = length > 0;
+      if (Ember.keys(record._attributes).length > 0) { return; }
 
-      if (!stillDirty) { record.send('rolledBack'); }
+      for (var key in record._relationships) {
+        var relationship = record._relationships[key],
+            meta = relationship.relationshipMeta,
+            inverseMeta = record.inverseFor(key),
+            originalValue = record._data[key];
+
+        if ('belongsTo' === meta.kind && relationship.inverseRecord !== originalValue) {
+          return;
+        } else if ('hasMany' === meta.kind && 'hasMany' === inverseMeta.kind && originalValue) {
+          var len = originalValue.length, idx;
+          if (len !== get(relationship.manyArray, 'length')) { return; }
+          for (idx = 0; idx < len; idx++) {
+            if (!relationship.members.has(originalValue[idx])) { return; }
+          }
+        }
+      }
+
+      record.send('rolledBack');
     },
 
     pushedData: Ember.K,
@@ -282,12 +357,17 @@ var DirtyState = {
   // saved, it is in the 'in flight' state. Changes to the
   // record cannot be made during this window.
   inFlight: {
+
     // FLAGS
+
     isSaving: true,
 
     // EVENTS
+
     didSetProperty: didSetProperty,
+
     becomeDirty: Ember.K,
+
     pushedData: Ember.K,
 
     unloadRecord: function(record) {
@@ -318,18 +398,20 @@ var DirtyState = {
   // A record is in the `invalid` if the adapter has indicated
   // the the record failed server-side invalidations.
   invalid: {
+
     // FLAGS
+
     isValid: false,
 
     // EVENTS
+
     deleteRecord: function(record) {
       record.transitionTo('deleted.uncommitted');
       record.disconnectRelationships();
     },
 
     didSetProperty: function(record, context) {
-      get(record, 'errors').remove(context.name);
-
+      get(record, 'errors').remove(context.meta.key);
       didSetProperty(record, context);
     },
 
@@ -428,7 +510,9 @@ updatedState.uncommitted.deleteRecord = function(record) {
 };
 
 var RootState = {
+
   // FLAGS
+
   isEmpty: false,
   isLoading: false,
   isLoaded: false,
@@ -445,13 +529,13 @@ var RootState = {
   // in-flight state, rolling back the record doesn't move
   // you out of the in-flight state.
   rolledBack: Ember.K,
+
   unloadRecord: function(record) {
     // clear relationships before moving to deleted state
     // otherwise it fails
     record.clearRelationships();
     record.transitionTo('deleted.saved');
   },
-
 
   propertyWasReset: Ember.K,
 
@@ -463,9 +547,13 @@ var RootState = {
   // the record is being created on the client, it will
   // transition into the `created` state.
   empty: {
+
     isEmpty: true,
 
     // EVENTS
+
+    didSetProperty: Ember.K,
+
     loadingData: function(record, promise) {
       record._loadingPromise = promise;
       record.transitionTo('loading');
@@ -489,7 +577,9 @@ var RootState = {
   // Usually, this process is asynchronous, using an
   // XHR to retrieve the data.
   loading: {
+
     // FLAGS
+
     isLoading: true,
 
     exit: function(record) {
@@ -497,6 +587,9 @@ var RootState = {
     },
 
     // EVENTS
+
+    didSetProperty: Ember.K,
+
     pushedData: function(record) {
       record.transitionTo('loaded.saved');
       record.triggerLater('didLoad');
@@ -516,6 +609,7 @@ var RootState = {
   // Most of a record's lifecycle is spent inside substates
   // of the `loaded` state.
   loaded: {
+
     initialState: 'saved',
 
     // FLAGS
@@ -530,6 +624,7 @@ var RootState = {
     // If there are no local changes to a record, it remains
     // in the `saved` state.
     saved: {
+
       setup: function(record) {
         var attrs = record._attributes;
         var isDirty = false;
@@ -547,6 +642,7 @@ var RootState = {
       },
 
       // EVENTS
+
       didSetProperty: didSetProperty,
 
       pushedData: Ember.K,
@@ -598,15 +694,21 @@ var RootState = {
 
   // A record is in this state if it was deleted from the store.
   deleted: {
+
     initialState: 'uncommitted',
+
     dirtyType: 'deleted',
 
     // FLAGS
+
     isDeleted: true,
+
     isLoaded: true,
+
     isDirty: true,
 
     // TRANSITIONS
+
     setup: function(record) {
       record.updateRecordArrays();
     },
@@ -620,6 +722,8 @@ var RootState = {
 
       // EVENTS
 
+      didSetProperty: Ember.K,
+
       willCommit: function(record) {
         record.transitionTo('inFlight');
       },
@@ -629,6 +733,7 @@ var RootState = {
       },
 
       becomeDirty: Ember.K,
+
       deleteRecord: Ember.K,
 
       rolledBack: function(record) {
@@ -641,7 +746,9 @@ var RootState = {
     // has saved to the server, a record is in the
     // `inFlight` substate of `deleted`.
     inFlight: {
+
       // FLAGS
+
       isSaving: true,
 
       // EVENTS
@@ -650,9 +757,9 @@ var RootState = {
 
       // TODO: More robust semantics around save-while-in-flight
       willCommit: Ember.K,
+
       didCommit: function(record) {
         record.transitionTo('saved');
-
         record.send('invokeLifecycleCallbacks');
       },
 
@@ -666,7 +773,9 @@ var RootState = {
     // been saved, the record enters the `saved` substate
     // of `deleted`.
     saved: {
+
       // FLAGS
+
       isDirty: false,
 
       setup: function(record) {
@@ -678,6 +787,10 @@ var RootState = {
         record.triggerLater('didDelete', record);
         record.triggerLater('didCommit', record);
       },
+
+      // EVENTS
+
+      didSetProperty: Ember.K,
 
       willCommit: Ember.K,
 
