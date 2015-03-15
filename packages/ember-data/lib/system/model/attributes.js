@@ -277,7 +277,9 @@ export default function attr(type, options) {
 
   var meta = {
     type: type,
+    kind: 'attr',
     isAttribute: true,
+    key: null,
     options: options
   };
 
@@ -292,8 +294,9 @@ export default function attr(type, options) {
         this._attributes[key] = value;
 
         this.send('didSetProperty', {
-          name: key,
-          oldValue: oldValue,
+          key: key,
+          kind: 'attr',
+          isAttribute: true,
           originalValue: this._data[key],
           value: value
         });
