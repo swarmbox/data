@@ -7,6 +7,8 @@ import {
   @module ember-data
 */
 var get = Ember.get;
+var classify = Ember.String.classify;
+
 /*
   This file encapsulates the various states that a record can transition
   through during its lifecycle.
@@ -177,11 +179,21 @@ var get = Ember.get;
 */
 
 function didSetProperty(internalModel, context) {
-  if (context.value === context.originalValue) {
-    delete internalModel._attributes[context.name];
-    internalModel.send('propertyWasReset', context.name);
-  } else if (context.value !== context.oldValue) {
+  var adapter = get(internalModel, 'store').adapterFor(internalModel.modelName);
+  var fn = adapter['dirtyRecordFor' + classify(context.kind) + 'Change'];
+
+  if (fn(internalModel, context)) {
+    if (internalModel.isRelationship) {
+      internalModel._relationships.get(context.key).isDirty = true;
+    }
     internalModel.send('becomeDirty');
+  } else {
+    if (context.isRelationship) {
+      internalModel._relationships.get(context.key).isDirty = false;
+    } else {
+      delete internalModel._attributes[context.key];
+    }
+    internalModel.send('propertyWasReset', context.key);
   }
 
   internalModel.updateRecordArraysLater();
@@ -250,8 +262,14 @@ var DirtyState = {
     loadingData: Ember.K,
 
     propertyWasReset: function(internalModel, name) {
-      var length = keysFunc(internalModel._attributes).length;
-      var stillDirty = length > 0;
+      var stillDirty = keysFunc(internalModel._attributes).length > 0;
+
+      if (stillDirty) { return; }
+
+      var relationships = internalModel._relationships;
+      internalModel.eachRelationship(function (key) {
+        stillDirty |= relationships.get(key).isDirty;
+      });
 
       if (!stillDirty) { internalModel.send('rolledBack'); }
     },
@@ -330,8 +348,7 @@ var DirtyState = {
     },
 
     didSetProperty: function(internalModel, context) {
-      internalModel.removeErrorMessageFromAttribute(context.name);
-
+      internalModel.removeErrorMessageFromAttribute(context.key);
       didSetProperty(internalModel, context);
     },
 
@@ -478,6 +495,9 @@ var RootState = {
     isEmpty: true,
 
     // EVENTS
+
+    didSetProperty: Ember.K,
+
     loadingData: function(internalModel, promise) {
       internalModel._loadingPromise = promise;
       internalModel.transitionTo('loading');
@@ -510,6 +530,9 @@ var RootState = {
     },
 
     // EVENTS
+
+    didSetProperty: Ember.K,
+
     pushedData: function(internalModel) {
       internalModel.transitionTo('loaded.saved');
       internalModel.triggerLater('didLoad');
@@ -628,6 +651,8 @@ var RootState = {
 
       // EVENTS
 
+      didSetProperty: Ember.K,
+
       willCommit: function(internalModel) {
         internalModel.transitionTo('inFlight');
       },
@@ -695,6 +720,10 @@ var RootState = {
         internalModel.triggerLater('didCommit', internalModel);
       },
 
+      // EVENTS
+
+      didSetProperty: Ember.K,
+
       willCommit: Ember.K,
 
       didCommit: Ember.K
@@ -704,7 +733,7 @@ var RootState = {
       isValid: false,
 
       didSetProperty: function(internalModel, context) {
-        internalModel.removeErrorMessageFromAttribute(context.name);
+        internalModel.removeErrorMessageFromAttribute(context.key);
 
         didSetProperty(internalModel, context);
       },

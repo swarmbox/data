@@ -311,7 +311,9 @@ export default function attr(type, options) {
 
   var meta = {
     type: type,
+    kind: 'attr',
     isAttribute: true,
+    key: null,
     options: options
   };
 
@@ -334,9 +336,10 @@ export default function attr(type, options) {
         // the 'didSetProperty' handler if it is no different from the original value
         internalModel._attributes[key] = value;
 
-        this._internalModel.send('didSetProperty', {
-          name: key,
-          oldValue: oldValue,
+        internalModel.send('didSetProperty', {
+          key: key,
+          kind: 'attr',
+          isAttribute: true,
           originalValue: internalModel._data[key],
           value: value
         });

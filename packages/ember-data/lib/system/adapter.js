@@ -528,6 +528,26 @@ var Adapter = Ember.Object.extend({
   */
   shouldBackgroundReloadAll: function(store, snapshotRecordArray) {
     return true;
+  },
+
+  dirtyRecordForAttrChange: function (snapshot, context) {
+    return context.value !== context.originalValue;
+  },
+
+  dirtyRecordForBelongsToChange: function (snapshot, context) {
+    return context.value !== context.originalValue;
+  },
+
+  dirtyRecordForHasManyChange: function (snapshot, context) {
+    var relationshipType = snapshot.type.determineRelationshipType({ key: context.key, kind: context.kind }, snapshot.store);
+
+    if (relationshipType === 'manyToMany' || relationshipType === 'manyToNone') {
+      if (context.recordAdded) {
+        return !context.originalValue.has(context.recordAdded);
+      }
+      return context.originalValue.has(context.recordRemoved);
+    }
+    return false;
   }
 });
 

@@ -167,13 +167,30 @@ function hasMany(type, options) {
 }
 
 Model.reopen({
-  notifyHasManyAdded: function(key) {
+  notifyHasManyAdded: function(key, record) {
     //We need to notifyPropertyChange in the adding case because we need to make sure
     //we fetch the newly added record in case it is unloaded
     //TODO(Igor): Consider whether we could do this only if the record state is unloaded
+    var internalModel = this._internalModel;
+    internalModel.notifyPropertyChange(key);
+    internalModel.send('didSetProperty', {
+      key: key,
+      kind: 'hasMany',
+      isRelationship: true,
+      originalValue: internalModel._relationships.get(key).canonicalMembers,
+      recordAdded: record
+    });
+  },
 
-    //Goes away once hasMany is double promisified
-    this.notifyPropertyChange(key);
+  notifyHasManyRemoved: function(key, record) {
+    var internalModel = this._internalModel;
+    internalModel.send('didSetProperty', {
+      key: key,
+      kind: 'hasMany',
+      isRelationship: true,
+      originalValue: internalModel._relationships.get(key).canonicalMembers,
+      recordRemoved: record
+    });
   }
 });
 

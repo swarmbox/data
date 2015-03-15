@@ -22,14 +22,9 @@ test("changes to attributes can be rolled back - deprecated", function() {
 
   equal(person.get('firstName'), 'Thomas');
 
-  expectDeprecation(
-    function() {
-      run(function() {
-        person.rollback();
-      });
-    },
-    'Using model.rollback() has been deprecated. Use model.rollbackAttributes() to discard any unsaved changes to a model.'
-  );
+  run(function() {
+    person.rollback();
+  });
 
   equal(person.get('firstName'), 'Tom');
   equal(person.get('hasDirtyAttributes'), false);

@@ -335,6 +335,40 @@ InternalModel.prototype = {
     }
   },
 
+  rollback: function () {
+    var dirtyKeys = keysFunc(this._attributes);
+
+    this._attributes = create(null);
+
+    if (get(this, 'isError')) {
+      this._inFlightAttributes = create(null);
+      this.didCleanError();
+    }
+
+    var isDeleted = this.isDeleted();
+    var isNew = this.isNew();
+
+    if (isDeleted || isNew) {
+      if (isDeleted) {
+        this.becameReady();
+        this.reconnectRelationships();
+      }
+      if (isNew) {
+        this.clearRelationships();
+      }
+    } else {
+      this.rollbackRelationships();
+    }
+
+    if (this.isValid()) {
+      this._inFlightAttributes = create(null);
+    }
+
+    this.send('rolledBack');
+
+    this.record._notifyProperties(dirtyKeys);
+  },
+
   rollbackAttributes: function() {
     var dirtyKeys = keysFunc(this._attributes);
 
@@ -493,6 +527,15 @@ InternalModel.prototype = {
     });
   },
 
+  rollbackRelationships: function () {
+    this.eachRelationship(function (name, relationship) {
+      this._relationships.get(name).rollback();
+    }, this);
+    var model = this;
+    forEach.call(keysFunc(this._implicitRelationships), function (key) {
+      model._implicitRelationships[key].rollback();
+    });
+  },
 
   /**
     When a find request is triggered on the store, the user can optionally pass in
