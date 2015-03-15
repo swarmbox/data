@@ -745,6 +745,40 @@ export default class InternalModel {
     }
   }
 
+  rollback() {
+    const dirtyKeys = Object.keys(this._attributes);
+
+    this._attributes = {};
+
+    if (get(this, 'isError')) {
+      this._inFlightAttributes = {};
+      this.didCleanError();
+    }
+
+    const isDeleted = this.isDeleted();
+    const isNew = this.isNew();
+
+    if (isDeleted || isNew) {
+      if (isDeleted) {
+        this.becameReady();
+        this.reconnectRelationships();
+      }
+      if (isNew) {
+        this.clearRelationships();
+      }
+    } else {
+      this.rollbackRelationships();
+    }
+
+    if (this.isValid()) {
+      this._inFlightAttributes = {};
+    }
+
+    this.send('rolledBack');
+
+    this._record._notifyProperties(dirtyKeys);
+  }
+
   rollbackAttributes() {
     let dirtyKeys;
     if (this.hasChangedAttributes()) {
@@ -907,6 +941,36 @@ export default class InternalModel {
     });
     Object.keys(this._implicitRelationships).forEach((key) => {
       this._implicitRelationships[key].removeInverseRelationships();
+    });
+  }
+
+  disconnectRelationships() {
+    this.eachRelationship(function (name, relationship) {
+      this._relationships.get(name).disconnect();
+    }, this);
+    const model = this;
+    Object.keys(this._implicitRelationships).forEach((key) => {
+      model._implicitRelationships[key].disconnect();
+    });
+  }
+
+  reconnectRelationships() {
+    this.eachRelationship(function(name, relationship) {
+      this._relationships.get(name).reconnect();
+    }, this);
+    const model = this;
+    Object.keys(this._implicitRelationships).forEach((key) => {
+      model._implicitRelationships[key].reconnect();
+    });
+  }
+
+  rollbackRelationships() {
+    this.eachRelationship(function (name, relationship) {
+      this._relationships.get(name).rollback();
+    }, this);
+    const model = this;
+    Object.keys(this._implicitRelationships).forEach((key) => {
+      model._implicitRelationships[key].rollback();
     });
   }
 

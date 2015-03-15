@@ -1,7 +1,11 @@
 /**
   @module ember-data
 */
+import Ember from 'ember';
 import { assert } from 'ember-data/-debug';
+
+const get = Ember.get;
+const classify = Ember.String.classify;
 
 /*
   This file encapsulates the various states that a record can transition
@@ -173,11 +177,21 @@ import { assert } from 'ember-data/-debug';
 */
 
 function didSetProperty(internalModel, context) {
-  if (context.value === context.originalValue) {
-    delete internalModel._attributes[context.name];
-    internalModel.send('propertyWasReset', context.name);
-  } else if (context.value !== context.oldValue) {
+  let adapter = get(internalModel, 'store').adapterFor(internalModel.modelName);
+  let fn = adapter['dirtyRecordFor' + classify(context.kind) + 'Change'];
+
+  if (fn(internalModel, context)) {
+    if (context.isRelationship) {
+      internalModel._relationships.get(context.key).isDirty = true;
+    }
     internalModel.send('becomeDirty');
+  } else {
+    if (context.isRelationship) {
+      internalModel._relationships.get(context.key).isDirty = false;
+    } else {
+      delete internalModel._attributes[context.key];
+    }
+    internalModel.send('propertyWasReset', context.key);
   }
 
   internalModel.updateRecordArrays();
@@ -242,7 +256,16 @@ const DirtyState = {
     loadingData() { },
 
     propertyWasReset(internalModel, name) {
-      if (!internalModel.hasChangedAttributes()) { internalModel.send('rolledBack'); }
+      let stillDirty = internalModel.hasChangedAttributes();
+
+      if (stillDirty) { return; }
+
+      const relationships = internalModel._relationships;
+      internalModel.eachRelationship(function (key) {
+        stillDirty |= relationships.get(key).isDirty;
+      });
+
+      if (!stillDirty) { internalModel.send('rolledBack'); }
     },
 
     pushedData(internalModel) {
@@ -324,7 +347,7 @@ const DirtyState = {
     },
 
     didSetProperty(internalModel, context) {
-      internalModel.removeErrorMessageFromAttribute(context.name);
+      internalModel.removeErrorMessageFromAttribute(context.key);
 
       didSetProperty(internalModel, context);
 
@@ -474,6 +497,9 @@ const RootState = {
     isEmpty: true,
 
     // EVENTS
+
+    didSetProperty() { },
+
     loadingData(internalModel, promise) {
       internalModel._loadingPromise = promise;
       internalModel.transitionTo('loading');
@@ -506,6 +532,9 @@ const RootState = {
     },
 
     // EVENTS
+
+    didSetProperty() { },
+
     pushedData(internalModel) {
       internalModel.transitionTo('loaded.saved');
       internalModel.triggerLater('didLoad');
@@ -613,6 +642,8 @@ const RootState = {
 
       // EVENTS
 
+      didSetProperty() { },
+
       willCommit(internalModel) {
         internalModel.transitionTo('inFlight');
       },
@@ -679,15 +710,20 @@ const RootState = {
         internalModel.triggerLater('didCommit', internalModel);
       },
 
+      // EVENTS
+
+      didSetProperty() { },
+
       willCommit() { },
-      didCommit()  { }
+
+      didCommit() { }
     },
 
     invalid: {
       isValid: false,
 
       didSetProperty(internalModel, context) {
-        internalModel.removeErrorMessageFromAttribute(context.name);
+        internalModel.removeErrorMessageFromAttribute(context.key);
 
         didSetProperty(internalModel, context);
 

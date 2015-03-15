@@ -74,6 +74,7 @@ export default class Relationship {
     this.meta = null;
     this.hasData = false;
     this.hasLoaded = false;
+    this.isDirty = false;
   }
 
   get parentType() {
@@ -410,4 +411,19 @@ export default class Relationship {
   }
 
   updateData() {}
+
+  disconnect() {
+    this.members.forEach(function (member) {
+      this.removeInternalModelFromInverse(member);
+    }, this);
+  }
+
+  reconnect() {
+    this.members.forEach(function (member) {
+      //TODO MMP Doesn't exist; needed?
+      //this.addInternalModelToInverse(member);
+    }, this);
+  }
+
+  rollback() {}
 }

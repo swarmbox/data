@@ -529,6 +529,50 @@ test("Deleting a record that has a hasMany relationship removes it from the othe
   assert.equal(user.get('accounts.length'), 0, 'Accounts got rolledback correctly');
 });
 
+/*
+Rollback Relationships tests
+*/
+
+test("Rollback many-to-many relationships works correctly - async", function (assert) {
+  let user, topic1, topic2;
+  run(function () {
+    user = store.push({ data: { type: 'user', id: 1, attributes: { name: 'Stanley' }, relationships: { topics: { data: [{ type: 'topic', id: 1 }] } } } });
+    topic1 = store.push({ data: { type: 'topic', id: 1, attributes: { title: "This year's EmberFest was great" } } });
+    topic2 = store.push({ data: { type: 'topic', id: 2, attributes: { title: "Last year's EmberFest was great" } } });
+  });
+  run(function () {
+    topic2.get('users').addObject(user);
+    topic2.rollback();
+  });
+  run(function () {
+    topic1.get('users').then(function (fetchedUsers) {
+      assert.deepEqual(fetchedUsers.toArray(), [user], 'Users are still there');
+    });
+    topic2.get('users').then(function (fetchedUsers) {
+      assert.deepEqual(fetchedUsers.toArray(), [], 'Users are still empty');
+    });
+    user.get('topics').then(function (fetchedTopics) {
+      assert.deepEqual(fetchedTopics.toArray(), [topic1], 'Topics are still there');
+    });
+  });
+});
+
+test("Rollback many-to-many relationships works correctly - sync", function (assert) {
+  let user, account1, account2;
+  run(function () {
+    user = store.push({ data: { type: 'user', id: 1, attributes: { name: 'Stanley' }, relationships: { accounts: { data: [{ type: 'account', id: 1 }] } } } });
+    account1 = store.push({ data: { type: 'account', id: 1, attributes: { state: 'lonely' } } });
+    account2 = store.push({ data: { type: 'account', id: 2, attributes: { state: 'content' } } });
+  });
+  run(function () {
+    account2.get('users').addObject(user);
+    account2.rollback();
+  });
+  assert.deepEqual(user.get('accounts').toArray(), [account1], 'Accounts are still there');
+  assert.deepEqual(account1.get('users').toArray(), [user], 'Users are still there');
+  assert.deepEqual(account2.get('users').toArray(), [], 'Users are still empty');
+});
+
 
 test("Re-loading a removed record should re add it to the relationship when the removed record is the last one in the relationship", function(assert) {
   var account, ada, byron;

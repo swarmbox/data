@@ -135,6 +135,10 @@ export default class ManyRelationship extends Relationship {
     this.internalModel.notifyHasManyAdded(this.key, internalModel, idx);
   }
 
+  notifyRecordRelationshipRemoved(internalModel) {
+    this.internalModel.notifyHasManyRemoved(this.key, internalModel);
+  }
+
   reload() {
     let manyArray = this.manyArray;
     let manyArrayLoadedState = manyArray.get('isLoaded');
@@ -221,7 +225,9 @@ export default class ManyRelationship extends Relationship {
   }
 
   notifyHasManyChanged() {
-    this.internalModel.notifyHasManyAdded(this.key);
+    //TODO MMP Why?
+    //this.internalModel.notifyHasManyAdded(this.key);
+    this.internalModel.notifyPropertyChange(this.key);
   }
 
   getRecords() {
@@ -259,13 +265,40 @@ export default class ManyRelationship extends Relationship {
       this.updateInternalModelsFromAdapter(internalModels);
     }
   }
+
+  rollback() {
+    let canonicalMembers = this.canonicalMembers;
+    let canonicalState = this.canonicalState;
+    let currentState = this.manyArray.currentState;
+    const size = canonicalMembers.size;
+
+    for (let i = 0; i < size; i++) {
+      let canonicalModel = canonicalState[i];
+      let currentModel = currentState[i];
+
+      if (canonicalModel === currentModel) { continue; }
+
+      if (!canonicalMembers.has(currentModel)) {
+        this.removeInternalModel(currentModel);
+      }
+
+      this.removeInternalModel(canonicalModel);
+      this.addInternalModel(canonicalModel, i);
+    }
+
+    this.removeInternalModels(currentState.slice(canonicalState.length));
+    this.internalModel.notifyPropertyChange(this.key);
+    this.internalModel.send('propertyWasReset', this.key);
+  }
 }
 
 function setForArray(array) {
-  var set = new OrderedSet();
+  const set = new OrderedSet();
 
   if (array) {
-    for (var i=0, l=array.length; i<l; i++) {
+    let i = 0;
+    const l = array.length;
+    for (; i<l; i++) {
       set.add(array[i]);
     }
   }

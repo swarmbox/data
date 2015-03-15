@@ -183,4 +183,8 @@ export default class BelongsToRelationship extends Relationship {
       this.setCanonicalInternalModel(internalModel);
     }
   }
+
+  rollback() {
+    this.setInternalModel(this.canonicalState);
+  }
 }

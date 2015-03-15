@@ -665,5 +665,28 @@ export default Ember.Object.extend({
   */
   shouldBackgroundReloadAll(store, snapshotRecordArray) {
     return true;
+  },
+
+  dirtyRecordForAttrChange(snapshot, context) {
+    return context.value !== context.originalValue;
+  },
+
+  dirtyRecordForBelongsToChange(snapshot, context) {
+    return context.value !== context.originalValue;
+  },
+
+  dirtyRecordForHasManyChange(snapshot, context) {
+    const relationshipType = snapshot.type.determineRelationshipType({
+      key: context.key,
+      kind: context.kind
+    }, snapshot.store);
+
+    if (relationshipType === 'manyToMany' || relationshipType === 'manyToNone') {
+      if (context.added) {
+        return !context.originalValue.has(context.added);
+      }
+      return context.originalValue.has(context.removed);
+    }
+    return false;
   }
 });
