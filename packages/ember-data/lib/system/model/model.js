@@ -858,6 +858,8 @@ var Model = Ember.Object.extend(Ember.Evented, {
     @private
   */
   adapterWillCommit: function() {
+    this._inFlightAttributes = this._attributes;
+    this._attributes = Ember.create(null);
     this.send('willCommit');
   },
 
@@ -1019,8 +1021,6 @@ var Model = Ember.Object.extend(Ember.Evented, {
     var resolver = Ember.RSVP.defer(promiseLabel);
 
     this.store.scheduleSave(this, resolver);
-    this._inFlightAttributes = this._attributes;
-    this._attributes = Ember.create(null);
 
     return PromiseObject.create({
       promise: resolver.promise
