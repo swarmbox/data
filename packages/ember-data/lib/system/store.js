@@ -1245,6 +1245,77 @@ Store = Service.extend({
     once(this, 'flushPendingSave');
   },
 
+  // maybe call this batchSave(records) instead
+  commitRecords: function(records) {
+    if (records.length) {
+      var transaction = { deleteRecord: [], createRecord: [], updateRecord: [] };
+      var adapter = get(this, 'defaultAdapter'); // todo: may want to separate these by their adapter, but for now using default
+
+      forEach(records, function(record) {
+        record.adapterWillCommit();
+        if (get(record, 'currentState.stateName') !== 'root.deleted.saved') {
+          var operation = 'updateRecord';
+          if (get(record, 'isNew')) {
+            operation = 'createRecord';
+          } else if (get(record, 'isDeleted')) {
+            operation = 'deleteRecord';
+          }
+          transaction[operation].push(record._createSnapshot());
+        }
+      });
+
+      var resolver = Ember.RSVP.defer();
+      resolver.resolve(adapterCommit(adapter, this, transaction));
+      return resolver.promise;
+    }
+
+    return Ember.RSVP.resolve(null);
+
+    function adapterCommit(adapter, store, transaction) {
+      var promise = adapter['commitRecords'](store, transaction);
+      var serializer = adapter.serializer; //serializerForAdapter(store, adapter, type?);  // todo may want to use specific serializer for record, but for now using adapter default
+      var label = "DS: Extract and notify about commitRecords";
+
+      Ember.assert("Your adapter's 'commitRecords' method must return a value, but it returned `undefined", promise !==undefined);
+
+      promise = Promise.cast(promise, label);
+
+      return promise.then(function(adapterPayloads) {
+        var payload;
+
+        store._adapterRun(function() {
+          // expect to get an hash payload arrays by operation in same order as transaction
+          forEach(['deleteRecord', 'createRecord', 'updateRecord'], function(operation) {
+            var adapterOperationPayload = adapterPayloads[operation];
+            forEach(get(transaction, operation), function(snapshot, i) {
+              var adapterPayload = adapterOperationPayload[i];
+              if (adapterPayload) {
+                payload = serializer.extract(store, snapshot.type, adapterPayload, snapshot.id, operation);
+              } else {
+                payload = adapterPayload;
+              }
+              store.didSaveRecord(snapshot.record, payload);
+            });
+          });
+        });
+
+        return records;
+      }, function(reason) {
+        // TODO is it possible to do anything like this here?
+
+        //if (reason instanceof InvalidError) {
+        //  var errors = serializer.extractErrors(store, type, reason.errors, get(record, 'id'));
+        //  store.recordWasInvalid(record, errors);
+        //  reason = new InvalidError(errors);
+        //} else {
+        //  store.recordWasError(record, reason);
+        //}
+
+        throw reason;
+      }, label);
+    }
+  },
+
   /**
     This method is called at the end of the run loop, and
     flushes any records passed into `scheduleSave`
