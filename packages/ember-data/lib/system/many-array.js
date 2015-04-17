@@ -64,6 +64,10 @@ export default Ember.Object.extend(Ember.MutableArray, Ember.Evented, {
     }
   },
 
+  /**
+   * make the currentState reflect the (canonicalState - deleted records) + (new records already in currentState)
+   * ordered by the canonical first then new. Only notify arrayContent change for actual changes.
+   */
   flushCanonical: function() {
     //TODO make this smarter, currently its plenty stupid
     var toSet = filter.call(this.canonicalState, function(record) {
@@ -75,12 +79,32 @@ export default Ember.Object.extend(Ember.MutableArray, Ember.Evented, {
     var newRecords = this.currentState.filter(function(record) {
       return record.get('isNew');
     });
+
     toSet = toSet.concat(newRecords);
-    var oldLength = this.length;
-    this.arrayContentWillChange(0, this.length, toSet.length);
-    this.set('length', toSet.length);
-    this.currentState = toSet;
-    this.arrayContentDidChange(0, oldLength, this.length);
+
+    var curr = this.currentState;
+
+    for (var i = 0; i < toSet.length; i++) {
+      var prevI = curr[i];
+      var newI = toSet[i];
+
+      if (prevI !== newI) {
+        this.arrayContentWillChange(i, 1, 1);
+        curr.splice(i, 1, newI);
+        this.set('length', curr.length);
+        this.arrayContentDidChange(i, 1, 1);
+      }
+    }
+
+    // clean up the end of curr if it still has some past the toSet length
+    if(curr.length > toSet.length) {
+      var rem = curr.length - toSet.length;
+      this.arrayContentWillChange(toSet.length, rem, 0);
+      curr.splice(toSet.length, rem);
+      this.set('length', curr.length);
+      this.arrayContentDidChange(toSet.length, rem, 0);
+    }
+
     //TODO Figure out to notify only on additions and maybe only if unloaded
     this.relationship.notifyHasManyChanged();
     this.record.updateRecordArrays();
