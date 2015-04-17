@@ -1228,11 +1228,11 @@ Store = Service.extend({
   // maybe call this batchSave(records) instead
   commitRecords: function(records) {
     if (records.length) {
-      var adapter = this.adapterFor(records[0].constructor); // todo: may want to separate these by their adapter, but for now assuming 1
-      var snapshotOperations = [];
+      var transaction = { deleteRecord: [], createRecord: [], updateRecord: [] };
+      var adapter = get(this, 'defaultAdapter'); // todo: may want to separate these by their adapter, but for now using default
+
       forEach(records, function(record) {
         record.adapterWillCommit();
-
         if (get(record, 'currentState.stateName') !== 'root.deleted.saved') {
           var operation = 'updateRecord';
           if (get(record, 'isNew')) {
@@ -1240,20 +1240,20 @@ Store = Service.extend({
           } else if (get(record, 'isDeleted')) {
             operation = 'deleteRecord';
           }
-          snapshotOperations.push([operation, record._createSnapshot()]);
+          transaction[operation].push(record._createSnapshot());
         }
       });
 
       var resolver = Ember.RSVP.defer();
-      resolver.resolve(adapterCommit(adapter, this, snapshotOperations));
+      resolver.resolve(adapterCommit(adapter, this, transaction));
       return resolver.promise;
     }
 
     return Ember.RSVP.resolve(null);
 
-    function adapterCommit(adapter, store, snapshotOperations) {
-      var promise = adapter['commitRecords'](store, snapshotOperations);
-      var serializer = serializerForAdapter(store, adapter, snapshotOperations[0][1].type);  // todo may want to use specific serializer for record, but for now assuming 1
+    function adapterCommit(adapter, store, transaction) {
+      var promise = adapter['commitRecords'](store, transaction);
+      var serializer = adapter.serializer; //serializerForAdapter(store, adapter, type?);  // todo may want to use specific serializer for record, but for now using adapter default
       var label = "DS: Extract and notify about commitRecords";
 
       Ember.assert("Your adapter's 'commitRecords' method must return a value, but it returned `undefined", promise !==undefined);
@@ -1264,17 +1264,18 @@ Store = Service.extend({
         var payload;
 
         store._adapterRun(function() {
-          // expect to get an array of payloads for each snapshotOperation in the same order
-          forEach(snapshotOperations, function(snapshotOperation, i) {
-            var operation = snapshotOperation[0];
-            var snapshot = snapshotOperation[1];
-            var adapterPayload = adapterPayloads[i];
-            if (adapterPayload) {
-              payload = serializer.extract(store, snapshot.type, adapterPayload, snapshot.id, operation);
-            } else {
-              payload = adapterPayload;
-            }
-            store.didSaveRecord(snapshot.record, payload);
+          // expect to get an hash payload arrays by operation in same order as transaction
+          forEach(['deleteRecord', 'createRecord', 'updateRecord'], function(operation) {
+            var adapterOperationPayload = adapterPayloads[operation];
+            forEach(get(transaction, operation), function(snapshot, i) {
+              var adapterPayload = adapterOperationPayload[i];
+              if (adapterPayload) {
+                payload = serializer.extract(store, snapshot.type, adapterPayload, snapshot.id, operation);
+              } else {
+                payload = adapterPayload;
+              }
+              store.didSaveRecord(snapshot.record, payload);
+            });
           });
         });
 
