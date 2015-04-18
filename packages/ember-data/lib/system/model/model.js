@@ -40,30 +40,32 @@ function extractPivotName(name) {
 }
 
 // Like Ember.merge, but instead returns a list of keys
-// for values that fail a strict equality check
+// for attributes that fail a strict equality check
 // instead of the original object.
-function mergeAndReturnChangedKeys(original, updates) {
-  var changedKeys = [];
+function mergeData(record, data) {
+  var changedAttrs = [];
+  var original = record._data;
+  var attrMap = get(record.constructor, 'attributes');
 
-  if (!updates || typeof updates !== 'object') {
-    return changedKeys;
+  if (!data || typeof data !== 'object') {
+    return changedAttrs;
   }
 
-  var keys   = Ember.keys(updates);
+  var keys   = Ember.keys(data);
   var length = keys.length;
   var i, val, key;
 
   for (i = 0; i < length; i++) {
     key = keys[i];
-    val = updates[key];
+    val = data[key];
 
-    if (original[key] !== val) {
-      changedKeys.push(key);
+    if (attrMap.has(key) && original[key] !== val) {
+      changedAttrs.push(key);
     }
 
     original[key] = val;
   }
-  return changedKeys;
+  return changedAttrs;
 }
 
 /**
@@ -910,13 +912,12 @@ var Model = Ember.Object.extend(Ember.Evented, {
     var changedKeys;
     set(this, 'isError', false);
 
-    if (data) {
-      changedKeys = mergeAndReturnChangedKeys(this._data, data);
-    } else {
-      merge(this._data, this._inFlightAttributes);
-    }
-
+    merge(this._data, this._inFlightAttributes);
     this._inFlightAttributes = Ember.create(null);
+
+    if (data) {
+      changedKeys = mergeData(this, data);
+    }
 
     this.send('didCommit');
     this.updateRecordArraysLater();
@@ -956,7 +957,7 @@ var Model = Ember.Object.extend(Ember.Evented, {
   setupData: function(data) {
     Ember.assert("Expected an object as `data` in `setupData`", Ember.typeOf(data) === 'object');
 
-    var changedKeys = mergeAndReturnChangedKeys(this._data, data);
+    var changedKeys = mergeData(this, data);
 
     this.pushedData();
 

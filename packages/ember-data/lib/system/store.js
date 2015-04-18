@@ -1577,7 +1577,7 @@ Store = Service.extend({
     // (possibly unloaded) before we push the payload into the
     // store.
 
-    data = normalizeRelationships(this, type, data);
+    data = normalizeRelationships(this, type, data, record);
 
 
     // Now that the pushed record as well as any related records
@@ -1962,6 +1962,7 @@ function normalizeRelationships(store, type, data, record) {
     } else if (kind === 'hasMany') {
       deserializeRecordIds(store, data, key, relationship, value);
     }
+    delete record._data[key];
   });
 
   return data;
