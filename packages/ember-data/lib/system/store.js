@@ -1273,7 +1273,7 @@ Store = Service.extend({
 
     function adapterCommit(adapter, store, transaction) {
       var promise = adapter['commitRecords'](store, transaction);
-      var serializer = adapter.serializer; //serializerForAdapter(store, adapter, type?);  // todo may want to use specific serializer for record, but for now using adapter default
+      var serializer = serializerForAdapter(store, adapter, 'application');  // todo may want to use specific serializer for record, but for now using application's adapter
       var label = "DS: Extract and notify about commitRecords";
 
       Ember.assert("Your adapter's 'commitRecords' method must return a value, but it returned `undefined", promise !==undefined);
