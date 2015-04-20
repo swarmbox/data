@@ -89,10 +89,18 @@ export default Ember.Object.extend(Ember.MutableArray, Ember.Evented, {
       var newI = toSet[i];
 
       if (prevI !== newI) {
-        this.arrayContentWillChange(i, 1, 1);
-        curr.splice(i, 1, newI);
+        var removed = !!prevI ? 1 : 0;
+        var added = !!newI ? 1 : 0;
+        this.arrayContentWillChange(i, removed, added);
+
+        if (added) {
+          curr.splice(i, removed, newI);
+        } else {
+          curr.splice(i, removed);
+        }
+
         this.set('length', curr.length);
-        this.arrayContentDidChange(i, 1, 1);
+        this.arrayContentDidChange(i, removed, added);
       }
     }
 
