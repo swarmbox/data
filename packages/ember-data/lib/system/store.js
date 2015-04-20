@@ -1249,7 +1249,7 @@ Store = Service.extend({
   commitRecords: function(records) {
     if (records.length) {
       var transaction = { deleteRecord: [], createRecord: [], updateRecord: [] };
-      var adapter = get(this, 'defaultAdapter'); // todo: may want to separate these by their adapter, but for now using default
+      var adapter = this.adapterFor('application'); // todo: may want to separate these by their adapter, but for now using the applications adapter
 
       forEach(records, function(record) {
         record.adapterWillCommit();
