@@ -864,13 +864,36 @@ export default class InternalModel {
     return this._recordData.getAttr(key);
   }
 
-  setDirtyHasMany(key, records) {
-    assertRecordsPassedToHasMany(records);
-    return this._recordData.setDirtyHasMany(key, extractRecordDatasFromRecords(records));
+  setDirtyHasMany(key, value) {
+    if (this.isDeleted()) {
+      throw new EmberError(`Attempted to set '${key}' to '${value}' on the deleted record ${this}`);
+    }
+
+    assertRecordsPassedToHasMany(value);
+
+    this._recordData.setDirtyHasMany(key, extractRecordDatasFromRecords(value));
+    let isDirty = this._recordData.isRelationshipDirty(key);
+    this.send('didSetProperty', {
+      name: key,
+      isDirty: isDirty
+    });
+
+    return value;
   }
 
   setDirtyBelongsTo(key, value) {
-    return this._recordData.setDirtyBelongsTo(key, extractRecordDataFromRecord(value));
+    if (this.isDeleted()) {
+      throw new EmberError(`Attempted to set '${key}' to '${value}' on the deleted record ${this}`);
+    }
+
+    this._recordData.setDirtyBelongsTo(key, extractRecordDataFromRecord(value));
+    let isDirty = this._recordData.isRelationshipDirty(key);
+    this.send('didSetProperty', {
+      name: key,
+      isDirty: isDirty
+    });
+
+    return value;
   }
 
   setDirtyAttribute(key, value) {
@@ -963,6 +986,38 @@ export default class InternalModel {
     return this._recordData.changedAttributes();
   }
 
+  hasChangedRelationships() {
+    if (this.isLoading() && !this.isReloading) {
+      // no need to instantiate _recordData in this case
+      return false;
+    }
+    return this._recordData.hasChangedRelationships();
+  }
+
+  changedRelationships() {
+    if (this.isLoading() && !this.isReloading) {
+      // no need to calculate changed attributes when calling `findRecord`
+      return {};
+    }
+    return this._recordData.changedRelationships();
+  }
+
+  hasChanges() {
+    if (this.isLoading() && !this.isReloading) {
+      // no need to instantiate _recordData in this case
+      return false;
+    }
+    return this._recordData.hasChanges();
+  }
+
+  changes() {
+    if (this.isLoading() && !this.isReloading) {
+      // no need to calculate changed attributes when calling `findRecord`
+      return {};
+    }
+    return this._recordData.changes();
+  }
+
   /*
     @method adapterWillCommit
     @private
@@ -997,9 +1052,15 @@ export default class InternalModel {
     return currentState[name](this, context);
   }
 
-  manyArrayRecordAdded(key) {
+  manyArrayRecordAdded(key, record, idx) {
     if (this.hasRecord) {
-      this._record.notifyHasManyAdded(key);
+      this._record.notifyHasManyAdded(key, record);
+    }
+  }
+
+  manyArrayRecordRemoved(key, record) {
+    if (this.hasRecord) {
+      this._record.notifyHasManyRemoved(key, record);
     }
   }
 
@@ -1060,6 +1121,19 @@ export default class InternalModel {
 
   didCreateRecord() {
     this._recordData.clientDidCreate();
+  }
+
+  rollback() {
+    let dirtyKeys = this._recordData.rollback();
+    if (get(this, 'isError')) {
+      this.didCleanError();
+    }
+
+    this.send('rolledBack');
+
+    if (this._record && dirtyKeys && dirtyKeys.length > 0) {
+      this._record._notifyProperties(dirtyKeys);
+    }
   }
 
   rollbackAttributes() {
@@ -1177,6 +1251,10 @@ export default class InternalModel {
     }
 
     triggers.length = 0;
+  }
+
+  removeFromInverseRelationships0() {
+    this._recordData.removeFromInverseRelationships0();
   }
 
   removeFromInverseRelationships(isNew = false) {

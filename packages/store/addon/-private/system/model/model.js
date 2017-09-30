@@ -786,6 +786,34 @@ const Model = EmberObject.extend(DeprecatedEvented, {
     return this._internalModel.changedAttributes();
   },
 
+  changedRelationships() {
+    return this._internalModel.changedRelationships();
+  },
+
+  changes() {
+    return this._internalModel.changes();
+  },
+
+  /**
+   If the model `isDirty` this function will discard any unsaved
+   changes. If the model `isNew` it will be removed from the store.
+
+   Example
+
+   ```javascript
+   record.get('name'); // 'Untitled Document'
+   record.set('name', 'Doc 1');
+   record.get('name'); // 'Doc 1'
+   record.rollback();
+   record.get('name'); // 'Untitled Document'
+   ```
+
+   @method rollback
+   */
+  rollback() {
+    this._internalModel.rollback();
+  },
+
   /**
     If the model `hasDirtyAttributes` this function will discard any unsaved
     changes. If the model `isNew` it will be removed from the store.
@@ -1206,6 +1234,13 @@ const Model = EmberObject.extend(DeprecatedEvented, {
   },
 
   notifyHasManyAdded(key) {
+    //We need to notifyPropertyChange in the adding case because we need to make sure
+    //we fetch the newly added record in case it is unloaded
+    //TODO(Igor): Consider whether we could do this only if the record state is unloaded
+    this.notifyPropertyChange(key);
+  },
+
+  notifyHasManyRemoved(key) {
     //We need to notifyPropertyChange in the adding case because we need to make sure
     //we fetch the newly added record in case it is unloaded
     //TODO(Igor): Consider whether we could do this only if the record state is unloaded

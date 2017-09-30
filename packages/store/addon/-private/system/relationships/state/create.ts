@@ -40,10 +40,24 @@ export default class Relationships {
     return !!this.initializedRelationships[key];
   }
 
+  filter(cb) {
+    let rels = this.initializedRelationships;
+    return Object.keys(rels).filter(name => {
+      return cb(name, rels[name]);
+    });
+  }
+
   forEach(cb) {
     let rels = this.initializedRelationships;
     Object.keys(rels).forEach(name => {
       cb(name, rels[name]);
+    });
+  }
+
+  map(cb) {
+    let rels = this.initializedRelationships;
+    return Object.keys(rels).map(name => {
+      return cb(name, rels[name]);
     });
   }
 

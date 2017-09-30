@@ -43,6 +43,7 @@ export default class Relationship {
   hasFailedLoadAttempt: boolean = false;
   link?: string | null;
   willSync?: boolean;
+  isDirty: boolean;
 
   constructor(
     store: any,
@@ -183,6 +184,8 @@ export default class Relationship {
     //   which would tell us slightly more about why the
     //   relationship is stale
     // this.updatedLink = false;
+
+    this.isDirty = false;
   }
 
   get isNew(): boolean {
@@ -435,6 +438,25 @@ export default class Relationship {
     this.setHasAnyRelationshipData(true);
   }
 
+  addRecordDataToInverse(recordData: RelationshipRecordData) {
+    let inverseRelationship = relationshipStateFor(recordData, this.inverseKey);
+    //Need to check for existence, as the record might unloading at the moment
+    if (inverseRelationship) {
+      inverseRelationship.addRecordDataToOwn(this.recordData);
+    }
+  }
+
+  addRecordDatasToInverse() {
+    this.members.forEach((recordData) => {
+      this.addRecordDataToInverse(recordData);
+    });
+  }
+
+  addRecordDataToOwn(recordData: RelationshipRecordData) {
+    this.members.add(recordData);
+    //this.recordData.updateRecordArrays();
+  }
+
   removeRecordData(recordData: RelationshipRecordData) {
     if (this.members.has(recordData)) {
       this.removeRecordDataFromOwn(recordData);
@@ -464,8 +486,16 @@ export default class Relationship {
     }
   }
 
+  removeRecordDatasFromInverse() {
+    this.members.forEach((recordData) => {
+      this.removeRecordDataFromInverse(recordData);
+    });
+  }
+
   removeRecordDataFromOwn(recordData: RelationshipRecordData | null, idx?: number) {
     this.members.delete(recordData);
+    this.notifyRecordRelationshipRemoved(recordData, idx);
+    //this.recordData.updateRecordArrays();
   }
 
   removeCanonicalRecordDataFromInverse(recordData: RelationshipRecordData) {
@@ -591,6 +621,8 @@ export default class Relationship {
 
   notifyRecordRelationshipAdded(recordData?, idxs?) {}
 
+  notifyRecordRelationshipRemoved(recordData?, idxs?) {}
+
   setHasAnyRelationshipData(value: boolean) {
     this.hasAnyRelationshipData = value;
   }
@@ -693,6 +725,10 @@ export default class Relationship {
   localStateIsEmpty() {}
 
   updateData(payload?, initial?) {}
+
+  rollback() {
+    this.isDirty = false;
+  }
 
   destroy() {}
 }

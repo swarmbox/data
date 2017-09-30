@@ -134,6 +134,22 @@ export default class ManyRelationship extends Relationship {
     this.notifyHasManyChange();
   }
 
+  addRecordDataToOwn(recordData: RelationshipRecordData, idx?: number) {
+    if (this.members.has(recordData)) { return; }
+    super.addRecordDataToOwn(recordData);
+    debugger
+    let index = idx || this.currentState.length;
+    this.currentState.splice(index, 0, recordData);
+    this.notifyHasManyChange();
+    // let manyArray = this.manyArray;
+    // if (idx !== undefined) {
+    //   //TODO(Igor) not used currently, fix
+    //   manyArray.currentState.insertAt(idx);
+    // } else {
+    //   manyArray._addInternalModels([recordData]);
+    // }
+  }
+
   //TODO(Igor) idx not used currently, fix
   removeRecordDataFromOwn(recordData: RelationshipRecordData, idx?: number) {
     super.removeRecordDataFromOwn(recordData, idx);
@@ -151,7 +167,16 @@ export default class ManyRelationship extends Relationship {
   }
 
   notifyRecordRelationshipAdded() {
-    this.notifyHasManyChange();
+    //if (this.manyArray.isLoaded) {
+      this.notifyHasManyChange();
+    //}
+  }
+
+  notifyRecordRelationshipRemoved(recordData: RelationshipRecordData) {
+    //if (this.manyArray.isLoaded) {
+      //this.recordData.notifyHasManyRemoved(this.key, recordData);
+      this.notifyHasManyChange();
+    //}
   }
 
   computeChanges(recordDatas: RelationshipRecordData[] = []) {
@@ -287,6 +312,50 @@ export default class ManyRelationship extends Relationship {
     }
 
     return !hasEmptyRecords;
+  }
+
+  canonicalizeOrder() {
+    let canonicalMembers = this.canonicalMembers;
+    let canonicalState = this.canonicalState;
+    let currentState = this.currentState;
+    const length = canonicalState.length;
+
+    for (let i = 0, j= 0; i < length; i++) {
+      let canonicalModel = canonicalState[i];
+      let currentModel = currentState[i];
+
+      if (canonicalModel === currentModel) { j++; continue; }
+      if (!canonicalMembers.has(currentModel)) { continue; }
+
+      this.removeRecordData(canonicalModel);
+      this.addRecordData(canonicalModel, j++);
+    }
+  }
+
+  rollback() {
+    let canonicalMembers = this.canonicalMembers;
+    let canonicalState = this.canonicalState;
+    let currentState = this.currentState;
+    const length = canonicalState.length;
+
+    for (let i = 0; i < length; i++) {
+      let canonicalModel = canonicalState[i];
+      let currentModel = currentState[i];
+
+      //NOTE SB Can't bail here cause model might be new or deleted and need to be added back... or can we somehow?
+      //if (canonicalModel === currentModel) { continue; }
+
+      if (!canonicalMembers.has(currentModel)) {
+        this.removeRecordData(currentModel);
+      }
+
+      this.removeRecordData(canonicalModel);
+      this.addRecordData(canonicalModel, i);
+    }
+
+    this.removeRecordDatas(currentState.slice(canonicalState.length));
+
+    super.rollback();
   }
 }
 

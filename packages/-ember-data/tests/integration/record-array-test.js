@@ -269,6 +269,67 @@ module('unit/record-array - RecordArray', function(hooks) {
     assert.equal(get(recordArray, 'length'), 0, 'record is removed from the array when it is saved');
   });
 
+  test('a loaded record is removed from a record array when it is deleted (remove deleted prior to save)', async function(assert) {
+    assert.expect(5);
+    this.owner.register(
+      'adapter:application',
+      Adapter.extend({
+        removeDeletedFromRelationshipsPriorToSave: true,
+        deleteRecord() {
+          return resolve({ data: null });
+        },
+        shouldBackgroundReloadRecord() {
+          return false;
+        }
+      })
+    );
+
+    store.push({
+      data: [{
+        type: 'person',
+        id: '1',
+        attributes: {
+          name: 'Scumbag Dale'
+        }
+      }, {
+        type: 'person',
+        id: '2',
+        attributes: {
+          name: 'Scumbag Katz'
+        }
+      }, {
+        type: 'person',
+        id: '3',
+        attributes: {
+          name: 'Scumbag Bryn'
+        }
+      }, {
+        type: 'tag',
+        id: '1'
+      }]
+    });
+
+    let scumbag = store.peekRecord('person', 1);
+    let tag = store.peekRecord('tag', 1);
+
+    tag.get('people').addObject(scumbag);
+
+    assert.equal(get(scumbag, 'tag'), tag, "precond - the scumbag's tag has been set");
+
+    let people = tag.get('people');
+
+    assert.equal(get(people, 'length'), 1, 'precond - record array has one item');
+    assert.equal(get(people.objectAt(0), 'name'), 'Scumbag Dale', "item at index 0 is record with id 1");
+
+    await scumbag.deleteRecord();
+
+    assert.equal(get(people, 'length'), 0, "record is removed from the record array");
+
+    await scumbag.save();
+
+    assert.equal(get(people, 'length'), 0, 'record is still removed from the array when it is saved');
+  });
+
   test("a loaded record is not removed from a record array when it is deleted even if the belongsTo side isn't defined", async function(assert) {
     class Person extends Model {
       @attr()
@@ -374,6 +435,61 @@ module('unit/record-array - RecordArray', function(hooks) {
 
     assert.equal(tag.get('people.length'), 1, 'record is stil in the record array');
     assert.equal(tool.get('person'), scumbag, 'the tool still belongs to the record');
+  });
+
+  test("a loaded record is not removed from both the record array and from the belongs to, even if the belongsTo side isn't defined (remove deleted prior to save)", async function(assert) {
+    assert.expect(4);
+    this.owner.register(
+      'adapter:application',
+      Adapter.extend({
+        removeDeletedFromRelationshipsPriorToSave: true,
+        deleteRecord() {
+           return Promise.resolve({ data: null });
+         }
+      })
+    );
+
+    store.push({
+      data: [
+        {
+          type: 'person',
+          id: '1',
+          attributes: {
+            name: 'Scumbag Tom',
+          },
+        },
+        {
+          type: 'tag',
+          id: '1',
+          relationships: {
+            people: {
+              data: [{ type: 'person', id: '1' }],
+            },
+          },
+        },
+        {
+          type: 'tool',
+          id: '1',
+          relationships: {
+            person: {
+              data: { type: 'person', id: '1' },
+            },
+          },
+        }
+      ]
+    });
+
+    let scumbag = store.peekRecord('person', 1);
+    let tag = store.peekRecord('tag', 1);
+    let tool = store.peekRecord('tool', 1);
+
+    assert.equal(tag.get('people.length'), 1, 'person is in the record array');
+    assert.equal(tool.get('person'), scumbag, 'the tool belongs to the person');
+
+    scumbag.deleteRecord();
+
+    assert.equal(tag.get('people.length'), 0, 'person is not in the record array');
+    assert.equal(tool.get('person'), null, 'the tool does not belong to the person');
   });
 
   // GitHub Issue #168

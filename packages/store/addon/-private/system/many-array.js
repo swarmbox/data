@@ -14,6 +14,7 @@ import { _objectIsAlive } from './store/common';
 import diffArray from './diff-array';
 import recordDataFor from './record-data-for';
 
+// noinspection JSClosureCompilerSyntax
 /**
   A `ManyArray` is a `MutableArray` that represents the contents of a has-many
   relationship.
@@ -190,11 +191,14 @@ export default EmberObject.extend(MutableArray, DeprecatedEvent, {
       this.set('length', toSet.length);
       this.currentState = toSet.slice();
       this.arrayContentDidChange(diff.firstChangeIndex, diff.removedCount, diff.addedCount);
-      if (isInitialized && diff.addedCount > 0) {
-        //notify only on additions
+      if (isInitialized && (diff.addedCount > 0)) {
+        //notify only on additions //TODO SB Why?!
         //TODO only notify if unloaded
         this.internalModel.manyArrayRecordAdded(this.get('key'));
       }
+      // if (isInitialized && diff.removedCount > 0) {
+      //   this.internalModel.manyArrayRecordRemoved(this.get('key'));
+      // }
     }
   },
 

@@ -9,7 +9,7 @@ import {
   @module @ember-data/store
 */
 
-export interface ChangedAttributesHash {
+export interface ChangedHash {
   [key: string]: [string, string];
 }
 
@@ -25,8 +25,9 @@ export default interface RecordData {
   willCommit(): void;
   commitWasRejected(recordIdentifier?: RecordIdentifier, errors?: JsonApiValidationError[]): void;
   unloadRecord(): void;
+  rollback(): string[];
   rollbackAttributes(): string[];
-  changedAttributes(): ChangedAttributesHash;
+  changedAttributes(): ChangedHash;
   hasChangedAttributes(): boolean;
   setDirtyAttribute(key: string, value: any): void;
 
@@ -44,6 +45,12 @@ export default interface RecordData {
 
   // ----- unspecced
   isAttrDirty(key: string): boolean;
+  isRelationshipDirty(key: string): boolean;
+  changedRelationships(): ChangedHash;
+  hasChangedRelationships(): boolean;
+  changes(): ChangedHash;
+  hasChanges(): boolean;
+  removeFromInverseRelationships0(): void;
   removeFromInverseRelationships(isNew: boolean): void;
   hasAttr(key: string): boolean;
 

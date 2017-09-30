@@ -1,7 +1,9 @@
 import { assert, inspect } from '@ember/debug';
+import { run } from '@ember/runloop';
 import { assertPolymorphicType } from 'ember-data/-debug';
 import { isNone } from '@ember/utils';
 import Relationship from './relationship';
+import ManyRelationship from "./has-many";
 import { RelationshipRecordData } from "../../../ts-interfaces/relationship-record-data";
 import { JsonApiBelongsToRelationship, JsonApiResourceIdentity } from "../../../ts-interfaces/record-data-json-api";
 import { RelationshipSchema } from "../../../ts-interfaces/record-data-schemas";
@@ -12,7 +14,7 @@ import { RelationshipSchema } from "../../../ts-interfaces/record-data-schemas";
 
 export default class BelongsToRelationship extends Relationship {
 
-  inverseRecordData: RelationshipRecordData | null;
+  inverseRecordData: RelationshipRecordData | null; //TODO SB rename to currentState
   canonicalState: RelationshipRecordData | null;
   key: string;
 
@@ -24,7 +26,7 @@ export default class BelongsToRelationship extends Relationship {
     this.key = relationshipMeta.key;
   }
 
-  setRecordData(recordData: RelationshipRecordData) {
+  setRecordData(recordData: RelationshipRecordData | null) {
     if (recordData) {
       this.addRecordData(recordData);
     } else if (this.inverseRecordData) {
@@ -126,6 +128,13 @@ export default class BelongsToRelationship extends Relationship {
 
     this.inverseRecordData = recordData;
     super.addRecordData(recordData);
+    this.notifyBelongsToChange();
+  }
+
+  addRecordDataToOwn(recordData: RelationshipRecordData) {
+    if (this.members.has(recordData)) { return; }
+    this.inverseRecordData = recordData;
+    super.addRecordDataToOwn(recordData);
     this.notifyBelongsToChange();
   }
 
@@ -233,5 +242,25 @@ export default class BelongsToRelationship extends Relationship {
     } else {
       this.setCanonicalRecordData(recordData);
     }
+  }
+
+  rollback() {
+    this.setRecordData(this.canonicalState);
+
+    // TODO MMP Can probably eliminate ManyRelationship.canonicalizeOrder() and maybe somehow
+    // do this with ManyRelationship.addRecordDataToOwn() & ManyArray._add/removeRecordData?
+    if (!this.inverseRecordData) { return; }
+
+    let rel;
+    if (this.inverseKey) {
+      rel = this.inverseRecordData._relationships.get(this.inverseKey);
+    } else {
+      rel = this.inverseRecordData._implicitRelationships[this.inverseKeyForImplicit];
+    }
+
+    if (rel instanceof ManyRelationship) {
+      run.scheduleOnce('actions', rel, rel.canonicalizeOrder);
+    }
+    super.rollback();
   }
 }

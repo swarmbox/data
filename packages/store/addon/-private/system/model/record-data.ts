@@ -8,7 +8,7 @@ import coerceId from '../coerce-id';
 import BelongsToRelationship from '../relationships/state/belongs-to';
 import ManyRelationship from '../relationships/state/has-many';
 import Relationship from '../relationships/state/relationship';
-import RecordData, { ChangedAttributesHash } from '../../ts-interfaces/record-data';
+import RecordData, { ChangedHash } from '../../ts-interfaces/record-data';
 import {
   JsonApiResource,
   JsonApiResourceIdentity,
@@ -104,6 +104,15 @@ export default class RecordDataDefault implements RelationshipRecordData {
 
   hasChangedAttributes() {
     return this.__attributes !== null && Object.keys(this.__attributes).length > 0;
+  }
+
+  hasChangedRelationships() {
+    let changes = this._relationships.filter((key, relationship) => relationship.isDirty);
+    return changes.length > 0;
+  }
+
+  hasChanges() {
+    return this.hasChangedAttributes() || this.hasChangedRelationships();
   }
 
   _clearErrors() {
@@ -260,7 +269,7 @@ export default class RecordDataDefault implements RelationshipRecordData {
     @method changedAttributes
     @private
   */
-  changedAttributes(): ChangedAttributesHash {
+  changedAttributes(): ChangedHash {
     let oldData = this._data;
     let currentData = this._attributes;
     let inFlightData = this._inFlightAttributes;
@@ -276,8 +285,66 @@ export default class RecordDataDefault implements RelationshipRecordData {
     return diffData;
   }
 
+  changedRelationships(): ChangedHash {
+    let oldData = this._relationships.map((key, relationship) => relationship.canonicalState);
+    let newData = this._relationships.map((key, relationship) => relationship instanceof BelongsToRelationship ? relationship.inverseRecordData : relationship.currentState);
+    let diffData = Object.create(null);
+    let newDataKeys = Object.keys(newData);
+
+    for (let i = 0, length = newDataKeys.length; i < length; i++) {
+      let key = newDataKeys[i];
+      diffData[key] = [oldData[key], newData[key]];
+    }
+
+    return diffData;
+  }
+
+  changes(): ChangedHash {
+    return assign({}, this.changedAttributes(), this.changedRelationships());
+  }
+
   isNew() {
     return this._isNew;
+  }
+
+  rollback() {
+    let dirtyKeys: string[] = [];
+
+    if (this.hasChangedAttributes()) {
+      dirtyKeys.concat(Object.keys(this._attributes));
+      this._attributes = null;
+    }
+
+    if (this.isNew()) {
+      this.removeFromInverseRelationships(true);
+      this._isDeleted = true;
+      this._isNew = false;
+    } else if (this.isDeleted()) {debugger
+      this.addToInverseRelationships();
+      this._isDeleted = false;
+    } else {
+      //TODO SB Can we filter on changed only? have to do something different with isNew and isDeleted?
+      //        i.e. if (this.hasChangedRelationships()) { ... } or relationship.isDirty?
+      this._relationships.forEach((key: string, relationship: Relationship) => {
+        dirtyKeys.push(key);
+        relationship.rollback();
+      });
+
+      let implicitRelationships = this._implicitRelationships;
+      Object.keys(implicitRelationships).forEach((key) => {
+        if (implicitRelationships[key].isDirty) {
+          dirtyKeys.push(key);
+          implicitRelationships[key].rollback();
+        }
+      });
+    }
+
+    this._inFlightAttributes = null;
+
+    this._clearErrors();
+    this.notifyStateChange();
+
+    return dirtyKeys;
   }
 
   rollbackAttributes() {
@@ -353,19 +420,55 @@ export default class RecordDataDefault implements RelationshipRecordData {
 
   // set a new "current state" via ResourceIdentifiers
   setDirtyHasMany(key, recordDatas) {
-    let relationship = this._relationships.get(key);
+    let relationship = this._relationships.get(key) as ManyRelationship;
     relationship.clear();
     relationship.addRecordDatas(recordDatas);
   }
 
   // append to "current state" via RecordDatas
-  addToHasMany(key, recordDatas, idx) {
-    this._relationships.get(key).addRecordDatas(recordDatas, idx);
+  addToHasMany(key, added, idx) {
+    // HACK SB Not sure how to access this here...
+    let relationship = this._relationships.get(key) as ManyRelationship;
+    let relationshipType = relationship.store.modelFor(this.modelName).determineRelationshipType(relationship, relationship.store);
+
+    relationship.addRecordDatas(added, idx);
+
+    // NOTE SB adapter.shouldDirtyHasMany()
+    if (relationshipType === 'manyToNone') {
+      relationship.isDirty = !relationship.canonicalMembers.has(added);
+    } else if (relationshipType === 'manyToMany') {
+      const { canonicalMembers, members } = relationship;
+      if (canonicalMembers.size !== members.size) {
+        relationship.isDirty = true;
+      } else {
+        relationship.isDirty = !canonicalMembers.list.every(x => members.list.includes(x));
+      }
+    } else {
+      relationship.isDirty = false;
+    }
   }
 
   // remove from "current state" via RecordDatas
-  removeFromHasMany(key, recordDatas) {
-    this._relationships.get(key).removeRecordDatas(recordDatas);
+  removeFromHasMany(key, removed) {
+    // HACK SB Not sure how to access this here...
+    let relationship = this._relationships.get(key) as ManyRelationship;
+    let relationshipType = relationship.store.modelFor(this.modelName).determineRelationshipType(relationship, relationship.store);
+
+    relationship.removeRecordDatas(removed);
+
+    // NOTE SB adapter.shouldDirtyHasMany()
+    if (relationshipType === 'manyToNone') {
+      relationship.isDirty = relationship.canonicalMembers.has(removed);
+    } else if (relationshipType === 'manyToMany') {
+      const { canonicalMembers, members } = relationship;
+      if (canonicalMembers.size !== members.size) {
+        relationship.isDirty = true;
+      } else {
+        relationship.isDirty = !canonicalMembers.list.every(x => members.list.includes(x));
+      }
+    } else {
+      relationship.isDirty = false;
+    }
   }
 
   commitWasRejected(identifier?, errors?: JsonApiValidationError[]) {
@@ -392,26 +495,30 @@ export default class RecordDataDefault implements RelationshipRecordData {
   }
 
   setDirtyBelongsTo(key: string, recordData: RelationshipRecordData) {
-    (this._relationships.get(key) as BelongsToRelationship).setRecordData(recordData);
+    let relationship = this._relationships.get(key) as BelongsToRelationship;
+
+    // NOTE SB adapter.shouldDirtyBelongsTo()
+    relationship.isDirty = recordData !== relationship.canonicalState;
+    relationship.setRecordData(recordData);
   }
 
   setDirtyAttribute(key: string, value: any) {
     let originalValue;
-    // Add the new value to the changed attributes hash
-    this._attributes[key] = value;
-
     if (key in this._inFlightAttributes) {
       originalValue = this._inFlightAttributes[key];
     } else {
       originalValue = this._data[key];
     }
-    // If we went back to our original value, we shouldn't keep the attribute around anymore
-    if (value === originalValue) {
+
+    // NOTE SB adapter.shouldDirtyAttribute()
+    if (value !== originalValue) {
+      this._attributes[key] = value;
+    } else {
       delete this._attributes[key];
     }
   }
 
-  getAttr(key: string): string {
+  getAttr(key: string): any {
     if (key in this._attributes) {
       return this._attributes[key];
     } else if (key in this._inFlightAttributes) {
@@ -528,6 +635,10 @@ export default class RecordDataDefault implements RelationshipRecordData {
     }
 
     return originalValue !== this._attributes[key];
+  }
+
+  isRelationshipDirty(key: string): boolean {
+    return this._relationships.get(key).isDirty;
   }
 
   get _attributes() {
@@ -663,6 +774,20 @@ export default class RecordDataDefault implements RelationshipRecordData {
     }
 
     return createOptions;
+  }
+
+  addToInverseRelationships() {
+    this._relationships.forEach((name: string, rel: Relationship) => rel.addRecordDatasToInverse());
+
+    let implicitRelationships = this._implicitRelationships;
+    Object.keys(implicitRelationships).forEach((key) => implicitRelationships[key].addRecordDatasToInverse());
+  }
+
+  removeFromInverseRelationships0() {
+    this._relationships.forEach((name: string, rel: Relationship) => rel.removeRecordDatasFromInverse());
+
+    let implicitRelationships = this._implicitRelationships;
+    Object.keys(implicitRelationships).forEach((key) => implicitRelationships[key].removeRecordDatasFromInverse());
   }
 
   /*

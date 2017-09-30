@@ -24,7 +24,7 @@ export function instrument(method) {
   @param {InternalModel} addedRecord record which
          should be added/set for the relationship
 */
-let assertPolymorphicType;
+let assertPolymorphicType = (parentInternalModel, relationshipMeta, addedInternalModel, store) => {};
 
 if (DEBUG) {
   let checkPolymorphic = function checkPolymorphic(modelClass, addedModelClass) {
