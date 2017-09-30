@@ -7,6 +7,7 @@ import {
   PromiseObject
 } from "../../promise-proxies";
 import Relationship from "./relationship";
+import ManyRelationship from "./has-many";
 
 export default class BelongsToRelationship extends Relationship {
   constructor(store, internalModel, inverseKey, relationshipMeta) {
@@ -110,8 +111,15 @@ export default class BelongsToRelationship extends Relationship {
     this.setInternalModel(content ? content._internalModel : content);
   }
 
+  addInternalModelToOwn(internalModel) {
+    if (this.members.has(internalModel)) { return; }
+    this.inverseInternalModel = internalModel;
+    super.addInternalModelToOwn(internalModel);
+    this.notifyBelongsToChanged();
+  }
+
   removeInternalModelFromOwn(internalModel) {
-    if (!this.members.has(internalModel)) { return;}
+    if (!this.members.has(internalModel)) { return; }
     this.inverseInternalModel = null;
     super.removeInternalModelFromOwn(internalModel);
     this.notifyBelongsToChanged();
@@ -194,6 +202,25 @@ export default class BelongsToRelationship extends Relationship {
       this.setInitialCanonicalInternalModel(internalModel);
     } else {
       this.setCanonicalInternalModel(internalModel);
+    }
+  }
+
+  rollback() {
+    this.setInternalModel(this.canonicalState);
+
+    // TODO MMP Can probably eliminate ManyRelationship.canonicalizeOrder() and maybe somehow
+    // do this with ManyRelationship.addInternalModelToOwn() & ManyArray._add/removeInternalModels?
+    if (!this.inverseInternalModel) { return; }
+
+    let rel;
+    if (this.inverseKey) {
+      rel = this.inverseInternalModel._relationships.get(this.inverseKey);
+    } else {
+      rel = this.inverseInternalModel._implicitRelationships[this.inverseKeyForImplicit];
+    }
+
+    if (rel instanceof ManyRelationship) {
+      Ember.run.scheduleOnce('actions', rel, rel.canonicalizeOrder);
     }
   }
 }

@@ -130,7 +130,9 @@ export default function attr(type, options) {
 
   let meta = {
     type: type,
+    kind: 'attr',
     isAttribute: true,
+    key: null,
     options: options
   };
 
@@ -159,8 +161,10 @@ export default function attr(type, options) {
           originalValue = internalModel._data[key];
         }
 
-        this._internalModel.send('didSetProperty', {
-          name: key,
+        internalModel.send('didSetProperty', {
+          key: key,
+          kind: 'attr',
+          isAttribute: true,
           oldValue: oldValue,
           originalValue: originalValue,
           value: value
