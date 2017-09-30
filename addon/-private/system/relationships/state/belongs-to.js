@@ -1,8 +1,10 @@
 import { resolve } from 'rsvp';
 import { assert, inspect } from '@ember/debug';
+import { run } from '@ember/runloop';
 import { assertPolymorphicType } from 'ember-data/-debug';
 import { PromiseBelongsTo, PromiseObject } from '../../promise-proxies';
 import Relationship from './relationship';
+import ManyRelationship from "./has-many";
 
 export default class BelongsToRelationship extends Relationship {
   constructor(store, internalModel, inverseKey, relationshipMeta) {
@@ -90,7 +92,6 @@ export default class BelongsToRelationship extends Relationship {
     }
   }
 
-
   removeCompletelyFromInverse() {
     super.removeCompletelyFromInverse();
 
@@ -139,8 +140,15 @@ export default class BelongsToRelationship extends Relationship {
     this._updateLoadingPromise(promise, content);
   }
 
+  addInternalModelToOwn(internalModel) {
+    if (this.members.has(internalModel)) { return; }
+    this.inverseInternalModel = internalModel;
+    super.addInternalModelToOwn(internalModel);
+    this.notifyBelongsToChange();
+  }
+
   removeInternalModelFromOwn(internalModel) {
-    if (!this.members.has(internalModel)) { return;}
+    if (!this.members.has(internalModel)) { return; }
     this.inverseInternalModel = null;
     this._promiseProxy = null;
     super.removeInternalModelFromOwn(internalModel);
@@ -271,6 +279,25 @@ export default class BelongsToRelationship extends Relationship {
       this.setInitialCanonicalInternalModel(internalModel);
     } else {
       this.setCanonicalInternalModel(internalModel);
+    }
+  }
+
+  rollback() {
+    this.setInternalModel(this.canonicalState);
+
+    // TODO MMP Can probably eliminate ManyRelationship.canonicalizeOrder() and maybe somehow
+    // do this with ManyRelationship.addInternalModelToOwn() & ManyArray._add/removeInternalModels?
+    if (!this.inverseInternalModel) { return; }
+
+    let rel;
+    if (this.inverseKey) {
+      rel = this.inverseInternalModel._relationships.get(this.inverseKey);
+    } else {
+      rel = this.inverseInternalModel._implicitRelationships[this.inverseKeyForImplicit];
+    }
+
+    if (rel instanceof ManyRelationship) {
+      run.scheduleOnce('actions', rel, rel.canonicalizeOrder);
     }
   }
 }

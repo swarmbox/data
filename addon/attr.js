@@ -117,7 +117,9 @@ export default function attr(type, options) {
 
   let meta = {
     type: type,
+    kind: 'attr',
     isAttribute: true,
+    key: null,
     options: options
   };
 

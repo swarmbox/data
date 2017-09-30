@@ -10,6 +10,8 @@ const {
   addCanonicalInternalModel,
   addCanonicalInternalModels,
   addInternalModel,
+  addInternalModelToInverse,
+  addInternalModelToOwn,
   addInternalModels,
   clear,
   flushCanonical,
@@ -31,6 +33,8 @@ const {
   'addCanonicalInternalModel',
   'addCanonicalInternalModels',
   'addInternalModel',
+  'addInternalModelToInverse',
+  'addInternalModelToOwn',
   'addInternalModels',
   'clear',
   'flushCanonical',
@@ -72,6 +76,7 @@ export default class Relationship {
     this._promiseProxy = null;
     this.meta = null;
     this.__inverseMeta = undefined;
+    this.isDirty = false;
 
     /*
       This flag forces fetch. `true` for a single request once `reload()`
@@ -366,6 +371,27 @@ export default class Relationship {
     this.setHasAnyRelationshipData(true);
   }
 
+  addInternalModelToInverse(internalModel) {
+    heimdall.increment(addInternalModelToInverse);
+    let inverseRelationship = internalModel._relationships.get(this.inverseKey);
+    //Need to check for existence, as the record might unloading at the moment
+    if (inverseRelationship) {
+      inverseRelationship.addInternalModelToOwn(this.internalModel);
+    }
+  }
+
+  addInternalModelsToInverse() {
+    this.members.forEach((internalModel) => {
+      this.addInternalModelToInverse(internalModel);
+    });
+  }
+
+  addInternalModelToOwn(internalModel) {
+    heimdall.increment(addInternalModelToOwn);
+    this.members.add(internalModel);
+    this.internalModel.updateRecordArrays();
+  }
+
   removeInternalModel(internalModel) {
     heimdall.increment(removeInternalModel);
     if (this.members.has(internalModel)) {
@@ -389,9 +415,16 @@ export default class Relationship {
     }
   }
 
+  removeInternalModelsFromInverse() {
+    this.members.forEach((internalModel) => {
+      this.removeInternalModelFromInverse(internalModel);
+    });
+  }
+
   removeInternalModelFromOwn(internalModel) {
     heimdall.increment(removeInternalModelFromOwn);
     this.members.delete(internalModel);
+    this.notifyRecordRelationshipRemoved(internalModel);
     this.internalModel.updateRecordArrays();
   }
 
@@ -639,6 +672,8 @@ export default class Relationship {
 
   notifyRecordRelationshipAdded() { }
 
+  notifyRecordRelationshipRemoved() { }
+
   setHasAnyRelationshipData(value) {
     this.hasAnyRelationshipData = value;
   }
@@ -730,6 +765,7 @@ export default class Relationship {
 
   updateData() {}
 
-  destroy() {
-  }
+  rollback() {}
+
+  destroy() {}
 }

@@ -2,6 +2,8 @@
   @module ember-data
 */
 import { assert } from '@ember/debug';
+import { get } from '@ember/object';
+import { classify } from '@ember/string';
 
 /*
   This file encapsulates the various states that a record can transition
@@ -172,12 +174,26 @@ import { assert } from '@ember/debug';
   @class RootState
 */
 
-function didSetProperty(internalModel, context) {
-  if (context.value === context.originalValue) {
-    delete internalModel._attributes[context.name];
-    internalModel.send('propertyWasReset', context.name);
-  } else if (context.value !== context.oldValue) {
+function didSetProperty(internalModel, relationshipMeta) {
+  let store = get(internalModel, 'store');
+
+  if (store.isDestroyed || store.isDestroying) { return; }
+
+  let adapter = store.adapterFor(internalModel.modelName);
+  let dirtyFn = adapter['dirtyRecordFor' + classify(relationshipMeta.kind) + 'Change'];
+
+  if (dirtyFn(internalModel, relationshipMeta)) {
+    if (relationshipMeta.isRelationship) {
+      internalModel._relationships.get(relationshipMeta.key).isDirty = true;
+    }
     internalModel.send('becomeDirty');
+  } else {
+    if (relationshipMeta.isRelationship) {
+      internalModel._relationships.get(relationshipMeta.key).isDirty = false;
+    } else {
+      delete internalModel._attributes[relationshipMeta.key];
+    }
+    internalModel.send('propertyWasReset', relationshipMeta.key);
   }
 
   internalModel.updateRecordArrays();
@@ -242,7 +258,16 @@ const DirtyState = {
     loadingData() { },
 
     propertyWasReset(internalModel, name) {
-      if (!internalModel.hasChangedAttributes()) { internalModel.send('rolledBack'); }
+      let stillDirty = internalModel.hasChangedAttributes();
+
+      if (stillDirty) { return; }
+
+      const relationships = internalModel._relationships;
+      internalModel.eachRelationship(function (key) {
+        stillDirty |= relationships.get(key).isDirty;
+      });
+
+      if (!stillDirty) { internalModel.send('rolledBack'); }
     },
 
     pushedData(internalModel) {
@@ -275,7 +300,7 @@ const DirtyState = {
     },
 
     rollback(internalModel) {
-      internalModel.rollbackAttributes();
+      internalModel.rollback();
       internalModel.triggerLater('ready');
     }
   },
@@ -326,12 +351,13 @@ const DirtyState = {
     // EVENTS
     deleteRecord(internalModel) {
       internalModel.transitionTo('deleted.uncommitted');
+      internalModel.removeFromInverseRelationships();
     },
 
-    didSetProperty(internalModel, context) {
-      internalModel.removeErrorMessageFromAttribute(context.name);
+    didSetProperty(internalModel, relationshipMeta) {
+      internalModel.removeErrorMessageFromAttribute(relationshipMeta.key);
 
-      didSetProperty(internalModel, context);
+      didSetProperty(internalModel, relationshipMeta);
 
       if (!internalModel.hasErrors()) {
         this.becameValid(internalModel);
@@ -419,6 +445,7 @@ const updatedState = dirtyState({
 function createdStateDeleteRecord(internalModel) {
   internalModel.transitionTo('deleted.saved');
   internalModel.send('invokeLifecycleCallbacks');
+  internalModel.removeFromInverseRelationships();
 }
 
 createdState.uncommitted.deleteRecord = createdStateDeleteRecord;
@@ -452,6 +479,7 @@ updatedState.inFlight.unloadRecord = assertAgainstUnloadRecord;
 
 updatedState.uncommitted.deleteRecord = function(internalModel) {
   internalModel.transitionTo('deleted.uncommitted');
+  internalModel.removeFromInverseRelationships();
 };
 
 updatedState.invalid.rolledBack = function(internalModel) {
@@ -494,6 +522,9 @@ const RootState = {
     isEmpty: true,
 
     // EVENTS
+
+    didSetProperty() { },
+
     loadingData(internalModel, promise) {
       internalModel._promiseProxy = promise;
       internalModel.transitionTo('loading');
@@ -526,6 +557,9 @@ const RootState = {
     },
 
     // EVENTS
+
+    didSetProperty() { },
+
     pushedData(internalModel) {
       internalModel.transitionTo('loaded.saved');
       internalModel.triggerLater('didLoad');
@@ -586,6 +620,7 @@ const RootState = {
 
       deleteRecord(internalModel) {
         internalModel.transitionTo('deleted.uncommitted');
+        internalModel.removeFromInverseRelationships();
       },
 
       unloadRecord(internalModel) {
@@ -633,12 +668,14 @@ const RootState = {
 
       // EVENTS
 
+      didSetProperty() { },
+
       willCommit(internalModel) {
         internalModel.transitionTo('inFlight');
       },
 
       rollback(internalModel) {
-        internalModel.rollbackAttributes();
+        internalModel.rollback();
         internalModel.triggerLater('ready');
       },
 
@@ -692,13 +729,17 @@ const RootState = {
       isDirty: false,
 
       setup(internalModel) {
-        internalModel.removeFromInverseRelationships();
+        internalModel.removeCompletelyFromInverseRelationships();
       },
 
       invokeLifecycleCallbacks(internalModel) {
         internalModel.triggerLater('didDelete', internalModel);
         internalModel.triggerLater('didCommit', internalModel);
       },
+
+      // EVENTS
+
+      didSetProperty() { },
 
       willCommit() { },
       didCommit()  { },
@@ -708,10 +749,10 @@ const RootState = {
     invalid: {
       isValid: false,
 
-      didSetProperty(internalModel, context) {
-        internalModel.removeErrorMessageFromAttribute(context.name);
+      didSetProperty(internalModel, relationshipMeta) {
+        internalModel.removeErrorMessageFromAttribute(relationshipMeta.key);
 
-        didSetProperty(internalModel, context);
+        didSetProperty(internalModel, relationshipMeta);
 
         if (!internalModel.hasErrors()) {
           this.becameValid(internalModel);
