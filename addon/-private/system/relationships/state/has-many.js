@@ -228,10 +228,20 @@ export default class ManyRelationship extends Relationship {
     super.flushCanonical();
   }
 
-  removeInternalModelFromOwn(internalModel, idx) {
-    if (!this.members.has(internalModel)) {
-      return;
+  addInternalModelToOwn(internalModel, idx) {
+    if (this.members.has(internalModel)) { return; }
+    super.addInternalModelToOwn(internalModel, idx);
+    let manyArray = this.manyArray;
+    if (idx !== undefined) {
+      //TODO(Igor) not used currently, fix
+      manyArray.currentState.insertAt(idx);
+    } else {
+      manyArray._addInternalModels([internalModel]);
     }
+  }
+
+  removeInternalModelFromOwn(internalModel, idx) {
+    if (!this.members.has(internalModel)) { return; }
     super.removeInternalModelFromOwn(internalModel, idx);
     // note that ensuring the many array is created, via `this.manyArray`
     // (instead of `this._manyArray`) is intentional.
@@ -269,7 +279,15 @@ export default class ManyRelationship extends Relationship {
   }
 
   notifyRecordRelationshipAdded(internalModel, idx) {
-    this.internalModel.notifyHasManyAdded(this.key, internalModel, idx);
+    if (this.manyArray.isLoaded) {
+      this.internalModel.notifyHasManyAdded(this.key, internalModel, idx);
+    }
+  }
+
+  notifyRecordRelationshipRemoved(internalModel) {
+    if (this.manyArray.isLoaded) {
+      this.internalModel.notifyHasManyRemoved(this.key, internalModel);
+    }
   }
 
   computeChanges(internalModels = []) {
@@ -386,7 +404,8 @@ export default class ManyRelationship extends Relationship {
   }
 
   notifyHasManyChanged() {
-    this.internalModel.notifyHasManyAdded(this.key);
+    //this.internalModel.notifyHasManyAdded(this.key);
+    this.internalModel.notifyPropertyChange(this.key);
   }
 
   updateData(data, initial) {
@@ -396,6 +415,52 @@ export default class ManyRelationship extends Relationship {
     } else {
       this.updateInternalModelsFromAdapter(internalModels);
     }
+  }
+
+  canonicalizeOrder() {
+    let canonicalMembers = this.canonicalMembers;
+    let canonicalState = this.canonicalState;
+    let currentState = this.manyArray.currentState;
+    const length = canonicalState.length;
+
+    for (let i = 0, j= 0; i < length; i++) {
+      let canonicalModel = canonicalState[i];
+      let currentModel = currentState[i];
+
+      if (canonicalModel === currentModel) { j++; continue; }
+      if (!canonicalMembers.has(currentModel)) { continue; }
+
+      this.removeInternalModel(canonicalModel);
+      this.addInternalModel(canonicalModel, j++);
+    }
+
+    this.internalModel.notifyPropertyChange(this.key);
+    this.internalModel.send('propertyWasReset', this.key);
+  }
+
+  rollback() {
+    let canonicalMembers = this.canonicalMembers;
+    let canonicalState = this.canonicalState;
+    let currentState = this.manyArray.currentState;
+    const length = canonicalState.length;
+
+    for (let i = 0; i < length; i++) {
+      let canonicalModel = canonicalState[i];
+      let currentModel = currentState[i];
+
+      if (canonicalModel === currentModel) { continue; }
+
+      if (!canonicalMembers.has(currentModel)) {
+        this.removeInternalModel(currentModel);
+      }
+
+      this.removeInternalModel(canonicalModel);
+      this.addInternalModel(canonicalModel, i);
+    }
+
+    this.removeInternalModels(currentState.slice(canonicalState.length));
+    this.internalModel.notifyPropertyChange(this.key);
+    this.internalModel.send('propertyWasReset', this.key);
   }
 
   destroy() {
