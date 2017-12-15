@@ -9,6 +9,8 @@ const {
   addCanonicalInternalModel,
   addCanonicalInternalModels,
   addInternalModel,
+  addInternalModelToInverse,
+  addInternalModelToOwn,
   addInternalModels,
   clear,
   findLink,
@@ -33,6 +35,8 @@ const {
   'addCanonicalInternalModel',
   'addCanonicalInternalModels',
   'addInternalModel',
+  'addInternalModelToInverse',
+  'addInternalModelToOwn',
   'addInternalModels',
   'clear',
   'findLink',
@@ -76,6 +80,7 @@ export default class Relationship {
     this.meta = null;
     this.hasData = false;
     this.hasLoaded = false;
+    this.isDirty = false;
   }
 
   get parentType() {
@@ -231,6 +236,27 @@ export default class Relationship {
     this.setHasData(true);
   }
 
+  addInternalModelToInverse(internalModel) {
+    heimdall.increment(addInternalModelToInverse);
+    let inverseRelationship = internalModel._relationships.get(this.inverseKey);
+    //Need to check for existence, as the record might unloading at the moment
+    if (inverseRelationship) {
+      inverseRelationship.addInternalModelToOwn(this.internalModel);
+    }
+  }
+
+  addInternalModelsToInverse() {
+    this.members.forEach((internalModel) => {
+      this.addInternalModelToInverse(internalModel);
+    });
+  }
+
+  addInternalModelToOwn(internalModel) {
+    heimdall.increment(addInternalModelToOwn);
+    this.members.add(internalModel);
+    this.internalModel.updateRecordArrays();
+  }
+
   removeInternalModel(internalModel) {
     heimdall.increment(removeInternalModel);
     if (this.members.has(internalModel)) {
@@ -254,9 +280,16 @@ export default class Relationship {
     }
   }
 
+  removeInternalModelsFromInverse() {
+    this.members.forEach((internalModel) => {
+      this.removeInternalModelFromInverse(internalModel);
+    });
+  }
+
   removeInternalModelFromOwn(internalModel) {
     heimdall.increment(removeInternalModelFromOwn);
     this.members.delete(internalModel);
+    this.notifyRecordRelationshipRemoved(internalModel);
     this.internalModel.updateRecordArrays();
   }
 
@@ -382,6 +415,8 @@ export default class Relationship {
 
   notifyRecordRelationshipAdded() { }
 
+  notifyRecordRelationshipRemoved() { }
+
   /*
    `hasData` for a relationship is a flag to indicate if we consider the
    content of this relationship "known". Snapshots uses this to tell the
@@ -465,6 +500,7 @@ export default class Relationship {
 
   updateData() {}
 
-  destroy() {
-  }
+  rollback() {}
+
+  destroy() {}
 }

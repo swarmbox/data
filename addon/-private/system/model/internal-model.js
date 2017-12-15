@@ -338,10 +338,6 @@ export default class InternalModel {
         adapterError: this.error
       };
 
-      if (typeof properties === 'object' && properties !== null) {
-        emberAssign(createOptions, properties);
-      }
-
       if (setOwner) {
         // ensure that `getOwner(this)` works inside a model instance
         setOwner(createOptions, getOwner(this.store));
@@ -350,6 +346,7 @@ export default class InternalModel {
       }
 
       this._record = this.store.modelFactoryFor(this.modelName).create(createOptions);
+      this._record.setProperties(properties);
 
       this._triggerDeferredTriggers();
       heimdall.stop(token);
@@ -746,6 +743,12 @@ export default class InternalModel {
     }
   }
 
+  notifyHasManyRemoved(key, record) {
+    if (this.hasRecord) {
+      this._record.notifyHasManyRemoved(key, record);
+    }
+  }
+
   notifyBelongsToChanged(key, record) {
     if (this.hasRecord) {
       this._record.notifyBelongsToChanged(key, record);
@@ -755,6 +758,45 @@ export default class InternalModel {
   notifyPropertyChange(key) {
     if (this.hasRecord) {
       this._record.notifyPropertyChange(key);
+    }
+  }
+
+  rollback() {
+    let dirtyKeys;
+
+    if (this.hasChangedAttributes()) {
+      dirtyKeys = Object.keys(this._attributes);
+      this._attributes = null;
+    }
+
+    if (get(this, 'isError')) {
+      this._inFlightAttributes = null;
+      this.didCleanError();
+    }
+
+    const isNew = this.isNew();
+    const isDeleted = this.isDeleted();
+
+    if (isNew || isDeleted) {
+      if (this.isNew()) {
+        this.removeCompletelyFromInverseRelationships();
+      }
+      if (this.isDeleted()) {
+        this.store.recordArrayManager.recordWasLoaded(this);
+        this.addToInverseRelationships();
+      }
+    } else {
+      this.rollbackRelationships();
+    }
+
+    if (this.isValid()) {
+      this._inFlightAttributes = {};
+    }
+
+    this.send('rolledBack');
+
+    if (dirtyKeys && dirtyKeys.length > 0) {
+      this._record._notifyProperties(dirtyKeys);
     }
   }
 
@@ -772,7 +814,7 @@ export default class InternalModel {
     }
 
     if (this.isNew()) {
-      this.removeFromInverseRelationships(true);
+      this.removeCompletelyFromInverseRelationships();
     }
 
     if (this.isValid()) {
@@ -784,6 +826,18 @@ export default class InternalModel {
     if (dirtyKeys && dirtyKeys.length > 0) {
       this._record._notifyProperties(dirtyKeys);
     }
+  }
+
+  /**
+    This method will rollback this record's relationships to their canonical state.
+
+    @method rollbackRelationships
+    @private
+  */
+  rollbackRelationships() {
+    let implicitRelationships = this._implicitRelationships;
+    this.eachRelationship((key) => this._relationships.get(key).rollback());
+    Object.keys(implicitRelationships).forEach((key) => implicitRelationships[key].rollback());
   }
 
   /*
@@ -886,24 +940,55 @@ export default class InternalModel {
   }
 
   /*
-   This method should only be called by records in the `isNew()` state OR once the record
-   has been deleted and that deletion has been persisted.
+    This method should only be called when rolling back records in the
+    `isDeleted()` state.
 
-   It will remove this record from any associated relationships.
+    It will add this record to the current state of each relationships'
+    inverse relationship.
 
-   If `isNew` is true (default false), it will also completely reset all
-    relationships to an empty state as well.
-
-    @method removeFromInverseRelationships
-    @param {Boolean} isNew whether to unload from the `isNew` perspective
+    @method addToInverseRelationships
     @private
    */
-  removeFromInverseRelationships(isNew = false) {
+  addToInverseRelationships() {
+    if (this.store.adapterFor(this.modelName).removeDeletedFromRelationshipsPriorToSave) {
+      let implicitRelationships = this._implicitRelationships;
+      this.eachRelationship((key) => this._relationships.get(key).addInternalModelsToInverse());
+      Object.keys(implicitRelationships).forEach((key) => implicitRelationships[key].addInternalModelsToInverse());
+    }
+  }
+
+  /*
+    This method should only be called by records just after to transitioning
+    to a deleted state.
+
+    It will remove this record from the current state of each relationships'
+    inverse relationship.
+
+    @method removeFromInverseRelationships
+    @private
+   */
+  removeFromInverseRelationships() {
+    if (this.store.adapterFor(this.modelName).removeDeletedFromRelationshipsPriorToSave) {
+      let implicitRelationships = this._implicitRelationships;
+      this.eachRelationship((key) => this._relationships.get(key).removeInternalModelsFromInverse());
+      Object.keys(implicitRelationships).forEach((key) => implicitRelationships[key].removeInternalModelsFromInverse());
+    }
+  }
+
+  /*
+    This method should only be called by records in the `isNew()` state
+    or once the record has been deleted and that deletion has been persisted.
+
+    It will remove this record from both the canonical and current state of
+    each relationships' inverse relationship.
+
+    @method removeCompletelyFromInverseRelationships
+    @private
+   */
+  removeCompletelyFromInverseRelationships() {
     this._relationships.forEach((name, rel) => {
       rel.removeCompletelyFromInverse();
-      if (isNew === true) {
-        rel.clear();
-      }
+      rel.clear();
     });
 
     let implicitRelationships = this._implicitRelationships;
@@ -913,9 +998,7 @@ export default class InternalModel {
       let rel = implicitRelationships[key];
 
       rel.removeCompletelyFromInverse();
-      if (isNew === true) {
-        rel.clear();
-      }
+      rel.clear();
     });
   }
 
