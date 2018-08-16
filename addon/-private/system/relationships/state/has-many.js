@@ -279,13 +279,13 @@ export default class ManyRelationship extends Relationship {
   }
 
   notifyRecordRelationshipAdded(internalModel, idx) {
-    if (this.manyArray.isLoaded) {
+    if (!this.relationshipIsStale) {
       this.internalModel.notifyHasManyAdded(this.key, internalModel, idx);
     }
   }
 
   notifyRecordRelationshipRemoved(internalModel) {
-    if (this.manyArray.isLoaded) {
+    if (!this.relationshipIsStale) {
       this.internalModel.notifyHasManyRemoved(this.key, internalModel);
     }
   }
