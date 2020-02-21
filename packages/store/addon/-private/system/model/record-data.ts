@@ -311,7 +311,7 @@ export default class RecordDataDefault implements RelationshipRecordData {
     let dirtyKeys: string[] = [];
 
     if (this.hasChangedAttributes()) {
-      dirtyKeys.concat(Object.keys(this._attributes));
+      Array.prototype.concat.apply(dirtyKeys, Object.keys(this._attributes));
       this._attributes = null;
     }
 
@@ -319,7 +319,7 @@ export default class RecordDataDefault implements RelationshipRecordData {
       this.removeFromInverseRelationships(true);
       this._isDeleted = true;
       this._isNew = false;
-    } else if (this.isDeleted()) {debugger
+    } else if (this.isDeleted()) {
       this.addToInverseRelationships();
       this._isDeleted = false;
     } else {
