@@ -193,6 +193,7 @@ const Model = EmberObject.extend(DeprecatedEvented, {
   hasDirtyAttributes: computed('currentState.isDirty', function() {
     return this.get('currentState.isDirty');
   }),
+  isDirty: retrieveFromCurrentState,
   /**
     If this property is `true` the record is in the `saving` state. A
     record enters the saving state when `save` is called, but the

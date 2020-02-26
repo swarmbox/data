@@ -1077,7 +1077,15 @@ export default class InternalModel {
         //  that said, also not clear why we haven't moved this to retainedmanyarray so maybe that's the bit that's just not workign
         manyArray.retrieveLatest();
       }
-      this.updateRecordArrays();
+
+      //NOTE SB 'didSetProperty' is really a misnomer since its relevant to both
+      //        setting and updating a many array. All it does is notify this to
+      //        become dirty or reset and then update store's record arrays...
+      let isDirty = this._recordData.isRelationshipDirty(key);
+      this.send('didSetProperty', {
+        name: key,
+        isDirty: isDirty
+      });
     }
   }
 

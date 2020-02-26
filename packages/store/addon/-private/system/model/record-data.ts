@@ -107,7 +107,7 @@ export default class RecordDataDefault implements RelationshipRecordData {
   }
 
   hasChangedRelationships() {
-    let changes = this._relationships.filter((key, relationship) => relationship.isDirty);
+    let changes = this._relationships.filter(key => this.isRelationshipDirty(key));
     return changes.length > 0;
   }
 
@@ -285,6 +285,7 @@ export default class RecordDataDefault implements RelationshipRecordData {
     return diffData;
   }
 
+  //FIX SB Currently returns everything...
   changedRelationships(): ChangedHash {
     let oldData = this._relationships.map((key, relationship) => relationship.canonicalState);
     let newData = this._relationships.map((key, relationship) => relationship instanceof BelongsToRelationship ? relationship.inverseRecordData : relationship.currentState);
@@ -323,19 +324,16 @@ export default class RecordDataDefault implements RelationshipRecordData {
       this.addToInverseRelationships();
       this._isDeleted = false;
     } else {
-      //TODO SB Can we filter on changed only? have to do something different with isNew and isDeleted?
-      //        i.e. if (this.hasChangedRelationships()) { ... } or relationship.isDirty?
       this._relationships.forEach((key: string, relationship: Relationship) => {
-        dirtyKeys.push(key);
+        if (this.isRelationshipDirty(key)) {
+          dirtyKeys.push(key);
+        }
         relationship.rollback();
       });
 
       let implicitRelationships = this._implicitRelationships;
       Object.keys(implicitRelationships).forEach((key) => {
-        if (implicitRelationships[key].isDirty) {
-          dirtyKeys.push(key);
-          implicitRelationships[key].rollback();
-        }
+        implicitRelationships[key].rollback();
       });
     }
 
@@ -427,48 +425,12 @@ export default class RecordDataDefault implements RelationshipRecordData {
 
   // append to "current state" via RecordDatas
   addToHasMany(key, added, idx) {
-    // HACK SB Not sure how to access this here...
-    let relationship = this._relationships.get(key) as ManyRelationship;
-    let relationshipType = relationship.store.modelFor(this.modelName).determineRelationshipType(relationship, relationship.store);
-
-    relationship.addRecordDatas(added, idx);
-
-    // NOTE SB adapter.shouldDirtyHasMany()
-    if (relationshipType === 'manyToNone') {
-      relationship.isDirty = !relationship.canonicalMembers.has(added);
-    } else if (relationshipType === 'manyToMany') {
-      const { canonicalMembers, members } = relationship;
-      if (canonicalMembers.size !== members.size) {
-        relationship.isDirty = true;
-      } else {
-        relationship.isDirty = !canonicalMembers.list.every(x => members.list.includes(x));
-      }
-    } else {
-      relationship.isDirty = false;
-    }
+    this._relationships.get(key).addRecordDatas(added, idx);
   }
 
   // remove from "current state" via RecordDatas
   removeFromHasMany(key, removed) {
-    // HACK SB Not sure how to access this here...
-    let relationship = this._relationships.get(key) as ManyRelationship;
-    let relationshipType = relationship.store.modelFor(this.modelName).determineRelationshipType(relationship, relationship.store);
-
-    relationship.removeRecordDatas(removed);
-
-    // NOTE SB adapter.shouldDirtyHasMany()
-    if (relationshipType === 'manyToNone') {
-      relationship.isDirty = relationship.canonicalMembers.has(removed);
-    } else if (relationshipType === 'manyToMany') {
-      const { canonicalMembers, members } = relationship;
-      if (canonicalMembers.size !== members.size) {
-        relationship.isDirty = true;
-      } else {
-        relationship.isDirty = !canonicalMembers.list.every(x => members.list.includes(x));
-      }
-    } else {
-      relationship.isDirty = false;
-    }
+    this._relationships.get(key).removeRecordDatas(removed);
   }
 
   commitWasRejected(identifier?, errors?: JsonApiValidationError[]) {
@@ -495,11 +457,7 @@ export default class RecordDataDefault implements RelationshipRecordData {
   }
 
   setDirtyBelongsTo(key: string, recordData: RelationshipRecordData) {
-    let relationship = this._relationships.get(key) as BelongsToRelationship;
-
-    // NOTE SB adapter.shouldDirtyBelongsTo()
-    relationship.isDirty = recordData !== relationship.canonicalState;
-    relationship.setRecordData(recordData);
+    this._relationships.get(key).setRecordData(recordData);
   }
 
   setDirtyAttribute(key: string, value: any) {
@@ -638,7 +596,25 @@ export default class RecordDataDefault implements RelationshipRecordData {
   }
 
   isRelationshipDirty(key: string): boolean {
-    return this._relationships.get(key).isDirty;
+    // NOTE SB adapter.shouldDirty[BelongsTo|HasMany]()
+    let relationship = this._relationships.get(key);
+
+    if (relationship.kind === 'belongsTo') {
+      return relationship.inverseRecordData !== relationship.canonicalState;
+    }
+
+    if (relationship.kind === 'hasMany') {
+      let relationshipType = relationship.store.modelFor(this.modelName).determineRelationshipType(relationship, relationship.store);
+      if (relationshipType === 'manyToMany' || relationshipType === 'manyToNone') {
+        const { canonicalMembers, members } = relationship;
+        if (canonicalMembers.size !== members.size) { return true; }
+        return !canonicalMembers.list.every(x => members.list.includes(x));
+      } else {
+        return false;
+      }
+    }
+
+    throw new Error(`Unknown relationship kind: ${relationship.kind}`);
   }
 
   get _attributes() {

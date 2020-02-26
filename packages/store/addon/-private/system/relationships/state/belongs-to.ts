@@ -90,7 +90,7 @@ export default class BelongsToRelationship extends Relationship {
 
     if (this.inverseRecordData === recordData) {
       this.inverseRecordData = null;
-      this.notifyBelongsToChange();
+      this.notifyRecordRelationshipRemoved(); //TODO SB Not called by super.removeCompletelyFromOwn, why?!
     }
   }
 
@@ -128,7 +128,6 @@ export default class BelongsToRelationship extends Relationship {
 
     this.inverseRecordData = recordData;
     super.addRecordData(recordData);
-    this.notifyBelongsToChange();
   }
 
   addRecordDataToOwn(recordData: RelationshipRecordData) {
@@ -162,6 +161,14 @@ export default class BelongsToRelationship extends Relationship {
       recordData.clientId,
       this.key
     );
+  }
+
+  notifyRecordRelationshipAdded() {
+    this.notifyBelongsToChange();
+  }
+
+  notifyRecordRelationshipRemoved(recordData: RelationshipRecordData) {
+    this.notifyBelongsToChange();
   }
 
   removeCanonicalRecordDataFromOwn(recordData: RelationshipRecordData) {

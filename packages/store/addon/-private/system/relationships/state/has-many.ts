@@ -69,7 +69,7 @@ export default class ManyRelationship extends Relationship {
     // TODO Igor consider making direct to remove the indirection
     // We are not lazily accessing the manyArray here because the change is coming from app side
     // this.manyArray.flushCanonical(this.currentState);
-    this.notifyHasManyChange();
+    this.notifyRecordRelationshipAdded();
   }
 
   removeCanonicalRecordDataFromOwn(recordData: RelationshipRecordData, idx) {
@@ -137,10 +137,9 @@ export default class ManyRelationship extends Relationship {
   addRecordDataToOwn(recordData: RelationshipRecordData, idx?: number) {
     if (this.members.has(recordData)) { return; }
     super.addRecordDataToOwn(recordData);
-    debugger
     let index = idx || this.currentState.length;
     this.currentState.splice(index, 0, recordData);
-    this.notifyHasManyChange();
+    this.notifyRecordRelationshipAdded();
     // let manyArray = this.manyArray;
     // if (idx !== undefined) {
     //   //TODO(Igor) not used currently, fix
@@ -155,28 +154,20 @@ export default class ManyRelationship extends Relationship {
     super.removeRecordDataFromOwn(recordData, idx);
     let index = idx || this.currentState.indexOf(recordData);
 
-    //TODO IGOR DAVID INVESTIGATE
-    if (index === -1) {
-      return;
-    }
+    if (index === -1) { return; } //TODO IGOR DAVID INVESTIGATE
     this.currentState.splice(index, 1);
     // TODO Igor consider making direct to remove the indirection
     // We are not lazily accessing the manyArray here because the change is coming from app side
-    this.notifyHasManyChange();
+    this.notifyRecordRelationshipRemoved()
     // this.manyArray.flushCanonical(this.currentState);
   }
 
   notifyRecordRelationshipAdded() {
-    //if (this.manyArray.isLoaded) {
-      this.notifyHasManyChange();
-    //}
+    this.notifyHasManyChange();
   }
 
   notifyRecordRelationshipRemoved(recordData: RelationshipRecordData) {
-    //if (this.manyArray.isLoaded) {
-      //this.recordData.notifyHasManyRemoved(this.key, recordData);
-      this.notifyHasManyChange();
-    //}
+    this.notifyHasManyChange();
   }
 
   computeChanges(recordDatas: RelationshipRecordData[] = []) {

@@ -551,87 +551,105 @@ module('integration/relationships/many_to_many_test - ManyToMany relationships',
 
   /* Relationship isDirty Tests */
 
-  test("Relationship isDirty at correct times when adding back removed values", function (assert) {
+  test('Relationship isDirty at correct times when adding back removed values', function(assert) {
     let user, topic1, topic2;
     run(() => {
       user = store.push({
         data: {
           type: 'user',
           id: 1,
-          attributes: {name: 'Stanley'},
-          relationships: {topics: {data: [{type: 'topic', id: 1}]}}
-        }
+          attributes: { name: 'Stanley' },
+          relationships: { topics: { data: [{ type: 'topic', id: 1 }] } },
+        },
       });
       // NOTE SB Pushing topics into store (even with updated values) does not dirty the user relationship
-      topic1 = store.push({data: {type: 'topic', id: 1, attributes: {title: "This year's EmberFest was great"}}});
-      topic2 = store.push({data: {type: 'topic', id: 2, attributes: {title: "Last year's EmberFest was great"}}});
-      user.get('topics').then(function (topics) {
-        const relationship = user._internalModel._recordData._relationships.get('topics');
-        assert.equal(relationship.isDirty, false, 'pushing topic1 into store does not dirty relationship');
+      topic1 = store.push({ data: { type: 'topic', id: 1, attributes: { title: "This year's EmberFest was great" } } });
+      topic2 = store.push({ data: { type: 'topic', id: 2, attributes: { title: "Last year's EmberFest was great" } } });
+      user.get('topics').then(function(topics) {
+        const recordData = user._internalModel._recordData;
+        assert.equal(recordData.isRelationshipDirty('topics'), false, 'pushing topic1 into store does not dirty relationship');
+        assert.equal(user.get('isDirty'), false, 'pushing topic1 into store does not dirty user');
         topics.removeObject(topic1);
-        assert.equal(relationship.isDirty, true, 'removing topic1 dirties the relationship');
+        assert.equal(recordData.isRelationshipDirty('topics'), true, 'removing topic1 dirties the relationship');
+        assert.equal(user.get('isDirty'), true, 'removing topic1 dirties the user');
         topics.addObjects([topic1, topic2]);
-        assert.equal(relationship.isDirty, true, 'adding topic1 and topic2 keeps the relationship dirty');
+        assert.equal(recordData.isRelationshipDirty('topics'), true, 'adding topic1 and topic2 keeps the relationship dirty');
+        assert.equal(user.get('isDirty'), true, 'adding topic1 and topic2 keeps the user dirty');
         topics.removeObject(topic2);
-        assert.equal(relationship.isDirty, false, 'removing topic2 make the relationship not dirty again');
+        assert.equal(recordData.isRelationshipDirty('topics'), false, 'removing topic2 make the relationship not dirty again');
+        assert.equal(user.get('isDirty'), false, 'removing topic2 make the user not dirty again');
       });
     });
   });
-  test("Relationship isDirty at correct times when removing values that were added", function (assert) {
-    let user, topic1, topic2, topic3;
+  test('Relationship isDirty at correct times when removing values that were added', function(assert) {
+    let user, topic1, topic2;
     run(() => {
       user = store.push({
         data: {
           type: 'user',
           id: 1,
-          attributes: {name: 'Stanley'},
-          relationships: {topics: {data: [{type: 'topic', id: 1}]}}
-        }
+          attributes: { name: 'Stanley' },
+          relationships: { topics: { data: [{ type: 'topic', id: 1 }] } },
+        },
       });
       // NOTE SB Pushing topics into store (even with updated values) does not dirty the user relationship
-      topic1 = store.push({data: {type: 'topic', id: 1, attributes: {title: "This year's EmberFest was great"}}});
-      topic2 = store.push({data: {type: 'topic', id: 2, attributes: {title: "Last year's EmberFest was great"}}});
-      user.get('topics').then(function (topics) {
-        const relationship = user._internalModel._recordData._relationships.get('topics');
-        assert.equal(relationship.isDirty, false, 'pushing topic1 into store does not dirty relationship');
+      topic1 = store.push({ data: { type: 'topic', id: 1, attributes: { title: "This year's EmberFest was great" } } });
+      topic2 = store.push({ data: { type: 'topic', id: 2, attributes: { title: "Last year's EmberFest was great" } } });
+      user.get('topics').then(function(topics) {
+        const recordData = user._internalModel._recordData;
+        assert.equal(recordData.isRelationshipDirty('topics'), false, 'pushing topic1 into store does not dirty relationship');
         topics.addObject(topic2);
-        assert.equal(relationship.isDirty, true, 'adding topic2 dirties the relationship');
+        assert.equal(recordData.isRelationshipDirty('topics'), true, 'adding topic2 dirties the relationship');
         topics.removeObjects([topic1, topic2]);
-        assert.equal(relationship.isDirty, true, 'removing topic1 and topic2 keeps the relationship dirty');
+        assert.equal(recordData.isRelationshipDirty('topics'), true, 'removing topic1 and topic2 keeps the relationship dirty');
         topics.addObject(topic1);
-        assert.equal(relationship.isDirty, false, 'adding back topic1 makes relationship not dirty again');
+        assert.equal(recordData.isRelationshipDirty('topics'), false, 'adding back topic1 makes relationship not dirty again');
       });
     });
   });
 
   /* Rollback Relationships Tests */
 
-  test("Rollback many-to-many relationships works correctly - async", function (assert) {
+  test('Rollback many-to-many relationships works correctly - async', function(assert) {
     let user, topic1, topic2;
     run(() => {
-      user = store.push({ data: { type: 'user', id: 1, attributes: { name: 'Stanley' }, relationships: { topics: { data: [{ type: 'topic', id: 1 }] } } } });
+      user = store.push({
+        data: {
+          type: 'user',
+          id: 1,
+          attributes: { name: 'Stanley' },
+          relationships: { topics: { data: [{ type: 'topic', id: 1 }] } },
+        },
+      });
       topic1 = store.push({ data: { type: 'topic', id: 1, attributes: { title: "This year's EmberFest was great" } } });
       topic2 = store.push({ data: { type: 'topic', id: 2, attributes: { title: "Last year's EmberFest was great" } } });
       topic2.get('users').addObject(user);
     });
     run(() => {
       topic2.rollback();
-      topic1.get('users').then(function (fetchedUsers) {
+      topic1.get('users').then(function(fetchedUsers) {
         assert.deepEqual(fetchedUsers.toArray(), [user], 'Users are still there');
       });
-      topic2.get('users').then(function (fetchedUsers) {
+      topic2.get('users').then(function(fetchedUsers) {
         assert.deepEqual(fetchedUsers.toArray(), [], 'Users are still empty');
       });
-      user.get('topics').then(function (fetchedTopics) {
+      user.get('topics').then(function(fetchedTopics) {
         assert.deepEqual(fetchedTopics.toArray(), [topic1], 'Topics are still there');
       });
     });
   });
 
-  test("Rollback many-to-many relationships works correctly - sync", function (assert) {
+  test('Rollback many-to-many relationships works correctly - sync', function(assert) {
     let user, account1, account2;
     run(() => {
-      user = store.push({ data: { type: 'user', id: 1, attributes: { name: 'Stanley' }, relationships: { accounts: { data: [{ type: 'account', id: 1 }] } } } });
+      user = store.push({
+        data: {
+          type: 'user',
+          id: 1,
+          attributes: { name: 'Stanley' },
+          relationships: { accounts: { data: [{ type: 'account', id: 1 }] } },
+        },
+      });
       account1 = store.push({ data: { type: 'account', id: 1, attributes: { state: 'lonely' } } });
       account2 = store.push({ data: { type: 'account', id: 2, attributes: { state: 'content' } } });
       account2.get('users').addObject(user);

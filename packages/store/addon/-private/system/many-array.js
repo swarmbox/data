@@ -191,14 +191,14 @@ export default EmberObject.extend(MutableArray, DeprecatedEvent, {
       this.set('length', toSet.length);
       this.currentState = toSet.slice();
       this.arrayContentDidChange(diff.firstChangeIndex, diff.removedCount, diff.addedCount);
-      if (isInitialized && (diff.addedCount > 0)) {
+      if (isInitialized && diff.addedCount > 0) {
         //notify only on additions //TODO SB Why?!
         //TODO only notify if unloaded
         this.internalModel.manyArrayRecordAdded(this.get('key'));
       }
-      // if (isInitialized && diff.removedCount > 0) {
-      //   this.internalModel.manyArrayRecordRemoved(this.get('key'));
-      // }
+      if (isInitialized && diff.removedCount > 0) {
+        this.internalModel.manyArrayRecordRemoved(this.get('key'));
+      }
     }
   },
 

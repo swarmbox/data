@@ -43,7 +43,6 @@ export default class Relationship {
   hasFailedLoadAttempt: boolean = false;
   link?: string | null;
   willSync?: boolean;
-  isDirty: boolean;
 
   constructor(
     store: any,
@@ -184,8 +183,6 @@ export default class Relationship {
     //   which would tell us slightly more about why the
     //   relationship is stale
     // this.updatedLink = false;
-
-    this.isDirty = false;
   }
 
   get isNew(): boolean {
@@ -726,9 +723,7 @@ export default class Relationship {
 
   updateData(payload?, initial?) {}
 
-  rollback() {
-    this.isDirty = false;
-  }
+  rollback() {}
 
   destroy() {}
 }
