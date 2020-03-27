@@ -163,11 +163,15 @@ export default class ManyRelationship extends Relationship {
   }
 
   notifyRecordRelationshipAdded() {
-    this.notifyHasManyChange();
+    if (!this.relationshipIsStale) {
+      this.notifyHasManyChange();
+    }
   }
 
   notifyRecordRelationshipRemoved(recordData: RelationshipRecordData) {
-    this.notifyHasManyChange();
+    if (!this.relationshipIsStale) {
+      this.notifyHasManyChange();
+    }
   }
 
   computeChanges(recordDatas: RelationshipRecordData[] = []) {

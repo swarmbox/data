@@ -581,6 +581,80 @@ module('integration/relationships/many_to_many_test - ManyToMany relationships',
       });
     });
   });
+
+  test('Relationship isDirty at correct times for inverse relationships using links depending on fetched or not', function(assert) {
+    let user, topic1, topic2;
+
+    const user1Data = { id: 1, type: 'user',
+      attributes: { name: 'Stanley' },
+      relationships: { topics: { links: { related: '/users/1/topics' } } },
+    };
+
+    const topic1Data = { id: 1, type: 'topic',
+      attributes: { title: "This year's EmberFest was great" },
+      relationships: { users: { links: { related: '/topics/1/users' } } },
+    };
+
+    const topic2Data = { id: 2, type: 'topic',
+      attributes: { title: "Last year's EmberFest was great" },
+      relationships: { users: { links: { related: '/topics/2/users' } } },
+    };
+
+    env.adapter.findHasMany = function(store, record, link, relationship) {
+      if (link === '/users/1/topics') {
+        return resolve({
+          data: [ topic1Data ]
+        });
+      } else if (link === '/topics/1/users') {
+        return resolve({
+          data: [ user1Data ]
+        });
+      } else if (link === '/topics/2/users') {
+        return resolve({
+          data: []
+        });
+      }
+      throw new Error('Invalid usage of test.');
+    };
+
+    run(() => {
+      user = store.push({ data: user1Data });
+      // NOTE SB Pushing topics into store (even with updated values) does not dirty the user relationship
+      topic1 = store.push({ data: topic1Data });
+      topic2 = store.push({ data: topic2Data });
+      user.get('topics').then(function(topics) {
+        topics.removeObject(topic1);
+        assert.equal(user.get('isDirty'), true, 'removing topic1 dirties the user');
+        assert.equal(topic1.get('isDirty'), false, 'removing topic1 does not dirty topic1 of the unresolved inverse relationship');
+
+        topics.addObjects([topic1, topic2]);
+        assert.equal(topic2.get('isDirty'), false, 'adding topic2 does not dirty topic2 of the unresolved inverse relationship');
+
+        topics.removeObject(topic2);
+        assert.equal(topic1.get('isDirty'), false, 'topic1 is not dirty since we are back to original state');
+        assert.equal(topic2.get('isDirty'), false, 'topic2 is not dirty since we are back to original state');
+
+        // resolve inverse for topic2
+        topic2.get('users').then(function() {
+          topics.addObject(topic2);
+          assert.equal(topic2.get('isDirty'), true, 'topic2 does dirty since its inverse is resolved');
+
+          topics.removeObject(topic2);
+          assert.equal(topic2.get('isDirty'), false, 'removing topic2 makes the inverse topic2 not dirty again');
+
+          // resolve inverse for topic1
+          topic1.get('users').then(function() {
+            topics.removeObject(topic1);
+            assert.equal(topic1.get('isDirty'), true, 'removing topic1 does dirty topic1 of the resolved inverse relationship');
+
+            topics.addObject(topic1);
+            assert.equal(topic1.get('isDirty'), false, 'removing topic1 makes the inverse topic1 not dirty again');
+          });
+        });
+      });
+    });
+  });
+
   test('Relationship isDirty at correct times when removing values that were added', function(assert) {
     let user, topic1, topic2;
     run(() => {
