@@ -312,7 +312,7 @@ export default class RecordDataDefault implements RelationshipRecordData {
     let dirtyKeys: string[] = [];
 
     if (this.hasChangedAttributes()) {
-      Array.prototype.concat.apply(dirtyKeys, Object.keys(this._attributes));
+      dirtyKeys = Array.prototype.concat.apply(dirtyKeys, Object.keys(this._attributes));
       this._attributes = null;
     }
 
