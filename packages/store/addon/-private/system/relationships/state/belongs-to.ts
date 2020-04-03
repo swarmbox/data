@@ -222,9 +222,12 @@ export default class BelongsToRelationship extends Relationship {
    */
   get allInverseRecordsAreLoaded(): boolean {
     let recordData = this.inverseRecordData;
-    let isEmpty = recordData !== null && recordData.isEmpty();
-
-    return !isEmpty;
+    // todo SB this will be fixed and removed in: https://github.com/emberjs/data/pull/6574
+    if (recordData == null) {
+      return true;
+    } else {
+      return !recordData.isEmpty() || recordData.isNew();
+    }
   }
 
   updateData(data: JsonApiResourceIdentity, initial: boolean) {

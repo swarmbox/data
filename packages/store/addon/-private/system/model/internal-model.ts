@@ -470,6 +470,8 @@ export default class InternalModel {
       if (this._recordData.setIsDeleted) {
         this._recordData.setIsDeleted(true);
       }
+    } else {
+      this._recordData.deleteRecord();
     }
     this.send('deleteRecord');
   }

@@ -126,6 +126,95 @@ test("saved changes to relationships should not roll back to a pre-saved state (
   });
 });
 
+test("hasMany relationship", function(assert) {
+  let tom, dog1, dog2, dog3;
+
+  store.adapterFor('dog').removeDeletedFromRelationshipsPriorToSave = true;
+
+  run(() => {
+    store.push({
+      data: {
+        type: 'person',
+        id: 1,
+        attributes: {
+          firstName: "Tom",
+          lastName: "Dale"
+        }
+      }
+    });
+    store.push({
+      data: {
+        type: 'dog',
+        id: 1,
+        attributes: {
+          name: "Fido"
+        },
+        relationships: {
+          owner: {
+            data: {
+              type: 'person',
+              id: 1
+            }
+          }
+        }
+      }
+    });
+    store.push({
+      data: {
+        type: 'dog',
+        id: 2,
+        attributes: {
+          name: "Bear"
+        },
+        relationships: {
+          owner: {
+            data: {
+              type: 'person',
+              id: 1
+            }
+          }
+        }
+      }
+    });
+    store.push({
+      data: {
+        type: 'dog',
+        id: 3,
+        attributes: {
+          name: "Spot"
+        }
+      }
+    });
+    tom = store.peekRecord('person', 1);
+    dog1 = store.peekRecord('dog', 1);
+    dog2 = store.peekRecord('dog', 2);
+    dog3 = store.peekRecord('dog', 3);
+  });
+
+  run(() => {
+    tom.get('dogs').then(dogs => {
+      assert.equal(dogs.length, 2, 'Tom has has 2 dogs');
+      dogs.addObject(dog3);
+      assert.equal(dogs.length, 3, 'Tom now has 3 dogs');
+      dog3.rollback();
+      assert.equal(dogs.length, 2, 'Tom is restored to having 2 dogs');
+
+      dogs.removeObject(dog2);
+      assert.equal(dogs.length, 1, 'Tom now only has 1 dog, after one ran away');
+      dog2.rollback();
+      assert.equal(dogs.length, 2, 'Tom is restored to having 2 dogs');
+
+      dog2.deleteRecord();
+      assert.equal(dog2.get('isDirty'), true, 'dog is dirtied when its deleted');
+      assert.equal(dogs.length, 1, 'Tom now only has 1 dog, after one got ran over by a car');
+      dog2.rollback();
+      assert.equal(dogs.length, 2, 'Tom is restored to having 2 dogs');
+
+      store.adapterFor('dog').removeDeletedFromRelationshipsPriorToSave = false;
+    });
+  });
+});
+
 // skip("saved changes to relationships should not roll back to a pre-saved state (from parent)", function(assert) {
 //   var person1, person2, dog1, dog2, dog3;
 //
