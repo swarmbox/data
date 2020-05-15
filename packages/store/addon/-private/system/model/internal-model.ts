@@ -872,15 +872,7 @@ export default class InternalModel {
     }
 
     assertRecordsPassedToHasMany(value);
-
-    this._recordData.setDirtyHasMany(key, extractRecordDatasFromRecords(value));
-    let isDirty = this._recordData.isRelationshipDirty(key);
-    this.send('didSetProperty', {
-      name: key,
-      isDirty: isDirty
-    });
-
-    return value;
+    return this._recordData.setDirtyHasMany(key, extractRecordDatasFromRecords(value));
   }
 
   setDirtyBelongsTo(key, value) {
@@ -888,14 +880,7 @@ export default class InternalModel {
       throw new EmberError(`Attempted to set '${key}' to '${value}' on the deleted record ${this}`);
     }
 
-    this._recordData.setDirtyBelongsTo(key, extractRecordDataFromRecord(value));
-    let isDirty = this._recordData.isRelationshipDirty(key);
-    this.send('didSetProperty', {
-      name: key,
-      isDirty: isDirty
-    });
-
-    return value;
+    return this._recordData.setDirtyBelongsTo(key, extractRecordDataFromRecord(value));
   }
 
   setDirtyAttribute(key, value) {
@@ -1095,6 +1080,14 @@ export default class InternalModel {
     if (this.hasRecord) {
       this._record.notifyBelongsToChange(key, this._record);
       this.updateRecordArrays();
+
+      if(!this.isDeleted()) {
+        let isDirty = this._recordData.isRelationshipDirty(key);
+        this.send('didSetProperty', {
+          name: key,
+          isDirty: isDirty
+        });
+      }
     }
   }
 

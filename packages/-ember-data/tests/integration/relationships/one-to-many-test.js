@@ -1541,6 +1541,25 @@ module('integration/relationships/one_to_many_test - OneToMany relationships', f
     });
   });
 
+  /* Adding to the Many side (Parent) of OneToMany should dirty the Child */
+
+  test("Adding to the Many side (Parent) of OneToMany should dirty the Child", function (assert) {
+    let user, message1, message2;
+    run(function () {
+      user = store.push({ data: { type: 'user', id: 1, attributes: { name: 'Stanley' } } });
+      message1 = store.push({ data: { type: 'message', id: 1, relationships: { user: { data: { type: 'user', id: 1 } } } } });
+      message2 = store.push({ data: { type: 'message', id: 2, relationships: { user: { data: null } } } });
+      user.get('messages').then(function (fetchedMessages) {
+        fetchedMessages.addObject(message2);
+        message2.get('user').then(function(m2User) {
+          assert.equal(m2User, user, 'child has newly assigned parent');
+          assert.equal(message2.get('isDirty'), true, 'message2 (child) is dirtied when it has a new user (parent)');
+          assert.equal(user.get('isDirty'), false, 'user (parent) is not dirty when its gets a new message (child)');
+        });
+      });
+    });
+  });
+
   /* Rollback from Dirty State */
 
   test("Rollback one-to-many relationships when the hasMany side has changed - async", function (assert) {
