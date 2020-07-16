@@ -1660,4 +1660,56 @@ module('integration/relationships/one_to_many_test - OneToMany relationships', f
     assert.equal(account2.get('user'), null, 'Account 2 still does not have the user');
     assert.deepEqual(user.get('accounts').toArray(), [account1], "User only has the original account");
   });
+
+  test('Async hasMany does not fetch from remote after already fetched', function(assert) {
+    let user, fetchCount = 0;
+
+    const user1Data = {
+      id: 1, type: 'user',
+      attributes: { name: 'Stanley' },
+      relationships: { messages: { links: { related: '/users/1/messages' } } },
+    };
+
+    const message1Data = {
+      id: 1, type: 'message',
+      attributes: { title: "This year's EmberFest was great" },
+      relationships: { user: { data: { id: '1', type: 'user' } } },
+    };
+
+    env.adapter.removeDeletedFromRelationshipsPriorToSave = true;
+    env.adapter.findHasMany = function(store, record, link, relationship) {
+      if (link === '/users/1/messages') {
+        assert.equal(fetchCount++ < 1, true, "user 1 messages is fetched only once");
+        return resolve({
+          data: [ message1Data ]
+        });
+      }
+      throw new Error('Invalid usage of test.');
+    };
+
+    run(() => {
+      user = store.push({ data: user1Data });
+      user.get('messages').then(function(messages) {
+        assert.equal(messages.get('length'), 1, "start out with 1 message");
+        messages.objectAt(0).deleteRecord();
+        assert.equal(messages.get('length'), 0, "down to 0 messages");
+
+        user.get('messages').then(function(messagesAgain) {
+          assert.equal(messagesAgain.get('length'), 0, "should still be at 0 messages");
+          messagesAgain.createRecord();
+          messagesAgain.createRecord();
+          assert.equal(messagesAgain.get('length'), 2, "back up to 2 with the new messages");
+
+          user.get('messages').then(function(messagesThrice) {
+            assert.equal(messagesThrice.get('length'), 2, "should still be at 2 messages");
+          });
+        });
+      });
+    });
+
+    run(()=> {
+      debugger
+      env.adapter.removeDeletedFromRelationshipsPriorToSave = false
+    });
+  });
 });

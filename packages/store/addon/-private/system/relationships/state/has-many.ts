@@ -296,8 +296,9 @@ export default class ManyRelationship extends Relationship {
    */
   get allInverseRecordsAreLoaded(): boolean {
     // check currentState for unloaded records
+    // todo SB this will be fixed and removed in: https://github.com/emberjs/data/pull/6574
     let hasEmptyRecords = this.currentState.reduce((hasEmptyModel, i) => {
-      return hasEmptyModel || i.isEmpty();
+      return hasEmptyModel || (i.isEmpty() && !i.isNew());
     }, false);
     // check un-synced state for unloaded records
     if (!hasEmptyRecords && this.willSync) {
