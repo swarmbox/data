@@ -12,6 +12,7 @@ import { all } from 'rsvp';
 import { CUSTOM_MODEL_CLASS, FULL_LINKS_ON_RELATIONSHIPS } from '@ember-data/canary-features';
 import { _objectIsAlive, DeprecatedEvented, diffArray, PromiseArray, recordDataFor } from '@ember-data/store/-private';
 
+// noinspection JSClosureCompilerSyntax
 /**
   A `ManyArray` is a `MutableArray` that represents the contents of a has-many
   relationship.
@@ -197,9 +198,12 @@ export default EmberObject.extend(MutableArray, DeprecatedEvented, {
       this.currentState = toSet.slice();
       this.arrayContentDidChange(diff.firstChangeIndex, diff.removedCount, diff.addedCount);
       if (isInitialized && diff.addedCount > 0) {
-        //notify only on additions
+        //notify only on additions //TODO SB Why?!
         //TODO only notify if unloaded
         this.internalModel.manyArrayRecordAdded(this.get('key'));
+      }
+      if (isInitialized && diff.removedCount > 0) {
+        this.internalModel.manyArrayRecordRemoved(this.get('key'));
       }
     }
   },

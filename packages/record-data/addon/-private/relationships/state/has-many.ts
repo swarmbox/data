@@ -69,7 +69,7 @@ export default class ManyRelationship extends Relationship {
     // TODO Igor consider making direct to remove the indirection
     // We are not lazily accessing the manyArray here because the change is coming from app side
     // this.manyArray.flushCanonical(this.currentState);
-    this.notifyHasManyChange();
+    this.notifyRecordRelationshipAdded();
   }
 
   removeCanonicalRecordDataFromOwn(recordData: RelationshipRecordData, idx?: number) {
@@ -134,24 +134,44 @@ export default class ManyRelationship extends Relationship {
     this.notifyHasManyChange();
   }
 
+  addRecordDataToOwn(recordData: RelationshipRecordData, idx?: number) {
+    if (this.members.has(recordData)) { return; }
+    super.addRecordDataToOwn(recordData);
+    let index = idx || this.currentState.length;
+    this.currentState.splice(index, 0, recordData);
+    this.notifyRecordRelationshipAdded();
+    // let manyArray = this.manyArray;
+    // if (idx !== undefined) {
+    //   //TODO(Igor) not used currently, fix
+    //   manyArray.currentState.insertAt(idx);
+    // } else {
+    //   manyArray._addInternalModels([recordData]);
+    // }
+  }
+
   //TODO(Igor) idx not used currently, fix
   removeRecordDataFromOwn(recordData: RelationshipRecordData, idx?: number) {
     super.removeRecordDataFromOwn(recordData, idx);
     let index = idx || this.currentState.indexOf(recordData);
 
-    //TODO IGOR DAVID INVESTIGATE
-    if (index === -1) {
-      return;
-    }
+    if (index === -1) { return; } //TODO IGOR DAVID INVESTIGATE
     this.currentState.splice(index, 1);
     // TODO Igor consider making direct to remove the indirection
     // We are not lazily accessing the manyArray here because the change is coming from app side
-    this.notifyHasManyChange();
+    this.notifyRecordRelationshipRemoved()
     // this.manyArray.flushCanonical(this.currentState);
   }
 
   notifyRecordRelationshipAdded() {
-    this.notifyHasManyChange();
+    if (!this.relationshipIsStale) {
+      this.notifyHasManyChange();
+    }
+  }
+
+  notifyRecordRelationshipRemoved(recordData: RelationshipRecordData) {
+    if (!this.relationshipIsStale) {
+      this.notifyHasManyChange();
+    }
   }
 
   computeChanges(recordDatas: RelationshipRecordData[] = []) {
@@ -240,5 +260,49 @@ export default class ManyRelationship extends Relationship {
     } else {
       this.updateRecordDatasFromAdapter(recordDatas);
     }
+  }
+
+  canonicalizeOrder() {
+    let canonicalMembers = this.canonicalMembers;
+    let canonicalState = this.canonicalState;
+    let currentState = this.currentState;
+    const length = canonicalState.length;
+
+    for (let i = 0, j= 0; i < length; i++) {
+      let canonicalModel = canonicalState[i];
+      let currentModel = currentState[i];
+
+      if (canonicalModel === currentModel) { j++; continue; }
+      if (!canonicalMembers.has(currentModel)) { continue; }
+
+      this.removeRecordData(canonicalModel);
+      this.addRecordData(canonicalModel, j++);
+    }
+  }
+
+  rollback() {
+    let canonicalMembers = this.canonicalMembers;
+    let canonicalState = this.canonicalState;
+    let currentState = this.currentState;
+    const length = canonicalState.length;
+
+    for (let i = 0; i < length; i++) {
+      let canonicalModel = canonicalState[i];
+      let currentModel = currentState[i];
+
+      //NOTE SB Can't bail here cause model might be new or deleted and need to be added back... or can we somehow?
+      //if (canonicalModel === currentModel) { continue; }
+
+      if (!canonicalMembers.has(currentModel)) {
+        this.removeRecordData(currentModel);
+      }
+
+      this.removeRecordData(canonicalModel);
+      this.addRecordData(canonicalModel, i);
+    }
+
+    this.removeRecordDatas(currentState.slice(canonicalState.length));
+
+    super.rollback();
   }
 }

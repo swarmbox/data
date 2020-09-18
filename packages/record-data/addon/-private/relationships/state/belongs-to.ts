@@ -1,8 +1,10 @@
 import { assert, inspect } from '@ember/debug';
+import { run } from '@ember/runloop';
 import { isNone } from '@ember/utils';
 
 import { assertPolymorphicType } from '@ember-data/store/-debug';
 
+import ManyRelationship from './has-many';
 import Relationship from './relationship';
 
 type ExistingResourceIdentifierObject = import('@ember-data/store/-private/ts-interfaces/ember-data-json-api').ExistingResourceIdentifierObject;
@@ -11,7 +13,7 @@ type RelationshipRecordData = import('../../ts-interfaces/relationship-record-da
 type DefaultSingleResourceRelationship = import('../../ts-interfaces/relationship-record-data').DefaultSingleResourceRelationship;
 
 export default class BelongsToRelationship extends Relationship {
-  inverseRecordData: RelationshipRecordData | null;
+  inverseRecordData: RelationshipRecordData | null; //TODO SB rename to currentState
   canonicalState: RelationshipRecordData | null;
   key: string;
 
@@ -29,7 +31,7 @@ export default class BelongsToRelationship extends Relationship {
     this.key = relationshipMeta.key;
   }
 
-  setRecordData(recordData: RelationshipRecordData) {
+  setRecordData(recordData: RelationshipRecordData | null) {
     if (recordData) {
       this.addRecordData(recordData);
     } else if (this.inverseRecordData) {
@@ -93,7 +95,7 @@ export default class BelongsToRelationship extends Relationship {
 
     if (this.inverseRecordData === recordData) {
       this.inverseRecordData = null;
-      this.notifyBelongsToChange();
+      this.notifyRecordRelationshipRemoved(recordData); //TODO SB Not called by super.removeCompletelyFromOwn, why?!
     }
   }
   removeCompletelyFromInverse() {
@@ -130,6 +132,14 @@ export default class BelongsToRelationship extends Relationship {
 
     this.inverseRecordData = recordData;
     super.addRecordData(recordData);
+  }
+
+  addRecordDataToOwn(recordData: RelationshipRecordData) {
+    if (this.members.has(recordData)) {
+      return;
+    }
+    this.inverseRecordData = recordData;
+    super.addRecordDataToOwn(recordData);
     this.notifyBelongsToChange();
   }
 
@@ -152,6 +162,14 @@ export default class BelongsToRelationship extends Relationship {
     let recordData = this.recordData;
     let storeWrapper = this.recordData.storeWrapper;
     storeWrapper.notifyBelongsToChange(recordData.modelName, recordData.id, recordData.clientId, this.key);
+  }
+
+  notifyRecordRelationshipAdded() {
+    this.notifyBelongsToChange();
+  }
+
+  notifyRecordRelationshipRemoved(recordData: RelationshipRecordData) {
+    this.notifyBelongsToChange();
   }
 
   removeCanonicalRecordDataFromOwn(recordData: RelationshipRecordData, idx?: number) {
@@ -214,5 +232,27 @@ export default class BelongsToRelationship extends Relationship {
     } else {
       this.setCanonicalRecordData(recordData);
     }
+  }
+
+  rollback() {
+    this.setRecordData(this.canonicalState);
+
+    // TODO MMP Can probably eliminate ManyRelationship.canonicalizeOrder() and maybe somehow
+    // do this with ManyRelationship.addRecordDataToOwn() & ManyArray._add/removeRecordData?
+    if (!this.inverseRecordData) {
+      return;
+    }
+
+    let rel;
+    if (this.inverseKey) {
+      rel = this.inverseRecordData._relationships.get(this.inverseKey);
+    } else {
+      rel = this.inverseRecordData._implicitRelationships[this.inverseKeyForImplicit];
+    }
+
+    if (rel instanceof ManyRelationship) {
+      run.scheduleOnce('actions', rel, rel.canonicalizeOrder);
+    }
+    super.rollback();
   }
 }

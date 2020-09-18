@@ -8,7 +8,7 @@ type JsonApiValidationError = import('./record-data-json-api').JsonApiValidation
   @module @ember-data/store
 */
 
-export interface ChangedAttributesHash {
+export interface ChangedHash {
   [key: string]: [string, string];
 }
 
@@ -24,9 +24,11 @@ export interface RecordData {
    */
   commitWasRejected(recordIdentifier?: {}, errors?: JsonApiValidationError[]): void;
 
+  deleteRecord(): void;
   unloadRecord(): void;
+  rollback(): string[];
   rollbackAttributes(): string[];
-  changedAttributes(): ChangedAttributesHash;
+  changedAttributes(): ChangedHash;
   hasChangedAttributes(): boolean;
   setDirtyAttribute(key: string, value: any): void;
 
@@ -44,6 +46,12 @@ export interface RecordData {
 
   // ----- unspecced
   isAttrDirty(key: string): boolean;
+  isRelationshipDirty(key: string): boolean;
+  changedRelationships(): ChangedHash;
+  hasChangedRelationships(): boolean;
+  changes(): ChangedHash;
+  hasChanges(): boolean;
+  removeFromInverseRelationships0(): void;
   removeFromInverseRelationships(isNew: boolean): void;
   hasAttr(key: string): boolean;
 
