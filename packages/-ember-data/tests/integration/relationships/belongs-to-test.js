@@ -1185,6 +1185,52 @@ module('integration/relationship/belongs_to Belongs-To Relationships', function(
     assert.equal(book.get('author'), author, 'Book has an author after rollback attributes');
   });
 
+  test('Rollbacking for a deleted record restores implicit relationship - async (remove deleted prior to save)', function(assert) {
+    let store = this.owner.lookup('service:store');
+    let adapter = store.adapterFor('application');
+    adapter.removeDeletedFromRelationshipsPriorToSave = true;
+    Book.reopen({
+      author: DS.belongsTo('author', { async: true }),
+    });
+    let book, author;
+    run(function() {
+      book = store.push({
+        data: {
+          id: '1',
+          type: 'book',
+          attributes: {
+            name: "Stanley's Amazing Adventures",
+          },
+          relationships: {
+            author: {
+              data: {
+                id: '2',
+                type: 'author',
+              },
+            },
+          },
+        },
+      });
+      author = store.push({
+        data: {
+          id: '2',
+          type: 'author',
+          attributes: {
+            name: 'Stanley',
+          },
+        },
+      });
+    });
+    run(() => {
+      author.deleteRecord();
+      author.rollback();
+      book.get('author').then(fetchedAuthor => {
+        assert.equal(fetchedAuthor, author, 'Book has an author after rollback');
+      });
+    });
+    adapter.removeDeletedFromRelationshipsPriorToSave = false;
+  });
+
   testInDebug('Passing a model as type to belongsTo should not work', function(assert) {
     assert.expect(1);
 

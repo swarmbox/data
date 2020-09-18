@@ -40,6 +40,13 @@ export default class Relationships {
     return !!this.initializedRelationships[key];
   }
 
+  filter(cb) {
+    let rels = this.initializedRelationships;
+    return Object.keys(rels).filter(name => {
+      return cb(name, rels[name]);
+    });
+  }
+
   forEach(cb) {
     let rels = this.initializedRelationships;
     Object.keys(rels).forEach(name => {
@@ -47,7 +54,14 @@ export default class Relationships {
     });
   }
 
-  get(key: string) {
+  map(cb) {
+    let rels = this.initializedRelationships;
+    return Object.keys(rels).map(name => {
+      return cb(name, rels[name]);
+    });
+  }
+
+  get(key: string): BelongsToRelationship | ManyRelationship | null {
     let relationships = this.initializedRelationships;
     let relationship = relationships[key];
 
